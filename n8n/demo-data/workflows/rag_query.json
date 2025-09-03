@@ -1,0 +1,522 @@
+{
+  "name": "rag_query",
+  "nodes": [
+    {
+      "parameters": {
+        "text": "=\n{{ $json.docs.map((item, index) => `${index + 1}. [${item.title || item.metadata?.title || 'Untitled'}] ${item.content}`).join('\\n') }}\n\n\nQuestion: {{ $('query').first().json.query }}\nHelpful Answer:",
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"answer\": { \"type\": \"string\" },\n    \"citations\": { \"type\": \"array\", \"items\": { \"type\": \"number\" } }\n  },\n  \"required\": [\"answer\", \"citations\"],\n  \"additionalProperties\": false,\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\"\n}\n",
+        "options": {
+          "systemPromptTemplate": "=Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know—do not attempt to fabricate an answer. Don't try to make up an answer.\n\n\nImportant:\n- In your response, include the indexes of the context chunks you used to generate the answer.\n- Cite sources inline using bracketed numbers (e.g., [1], [2]) that correspond to the context chunk indexes.\n- Your output must be a JSON object that adheres to the json schema\n\nWhen citing sources, include the index (e.g., [1]) and also return a citationDetails array with the index and the title of each cited document. You may also include the source if available."
+        }
+      },
+      "id": "e66d9661-a629-4cbd-af76-061881f51485",
+      "name": "Answer the query based on chunks",
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "position": [
+        -192,
+        16
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "02608d62-2afc-4b13-82a5-2ef7495db1ca",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "position": [
+        -2112,
+        16
+      ],
+      "webhookId": "cd2703a7-f912-46fe-8787-3fb83ea116ab",
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "model": "qwen3:0.6b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -128,
+        240
+      ],
+      "id": "4e5fb62e-26c3-4eac-bf36-d9a1acefb3cf",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text:v1.5"
+      },
+      "id": "d30fe678-00d4-4068-bfea-0292210f0864",
+      "name": "Embeddings Ollama2",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
+      "typeVersion": 1,
+      "position": [
+        -1664,
+        240
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "code": {
+          "execute": {
+            "code": "const { QdrantClient } = require('@qdrant/js-client-rest');\nconst { BM25Retriever } = require(\"@langchain/community/retrievers/bm25\");\nconst { DynamicTool } = require(\"@langchain/core/tools\");\n\n// 1. Tool Config\nconst name = 'get_sparse_vector';\nconst description = 'Generates TD-IDF sparse vector for query';\n\n// 2. Qdrant config\nconst client = new QdrantClient({ url: 'http://qdrant:6333' });\nconst collectionName = 'hybrid_rag';\nconst limit = 15;\n\n// 3. Inputs\nconst inputData = await this.getInputData();\nconst embeddings = await this.getInputConnectionData('ai_embedding', 0);\nconst sparseVectorTool = await this.getInputConnectionData('ai_tool', 0);\n\n// 4. Execute\nconst query = inputData[0].json.query;\n\nconst denseVector = await embeddings.embedQuery(query);\nconst sparseVector = JSON.parse(await sparseVectorTool.invoke(query));\n\nconst response = await client.query(collectionName, {\n  prefetch: [\n    {\n      query: denseVector,\n      using: 'default',\n      limit: 100\n    },\n    {\n      query: sparseVector,\n      using: 'bm42',\n      limit: 100\n    }\n ],\n query: { fusion: 'rrf' },\n with_payload: true,\n limit,\n});\n\nconst docs = response.points.map(res => ({\n  pageContent: res.payload.content,\n  metadata: res.payload.metadata\n}));\nconst retriever = BM25Retriever.fromDocuments(docs, { k: limit });\nconst rankedDocs = await retriever.invoke(query);\nreturn rankedDocs;"
+          }
+        },
+        "inputs": {
+          "input": [
+            {
+              "type": "main",
+              "maxConnections": 1,
+              "required": true
+            },
+            {
+              "type": "ai_embedding",
+              "maxConnections": 1,
+              "required": true
+            },
+            {
+              "type": "ai_tool",
+              "maxConnections": 1,
+              "required": true
+            }
+          ]
+        },
+        "outputs": {
+          "output": [
+            {
+              "type": "main"
+            }
+          ]
+        }
+      },
+      "id": "6a2341d2-a0c3-4d37-b3bf-e97239b09f7a",
+      "name": "Qdrant with BM25 ReRank1",
+      "type": "@n8n/n8n-nodes-langchain.code",
+      "typeVersion": 1,
+      "position": [
+        -1664,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "description": "Generates TD-IDF sparse vector for query",
+        "language": "python",
+        "pythonCode": "import json\nfrom sklearn.feature_extraction.text import TfidfVectorizer\n\n# Create TF-IDF vectorizer\nvectorizer = TfidfVectorizer()\n\n# Fit and transform the texts to generate TF-IDF vectors\ntexts = [_input.item.json.query]\nX = vectorizer.fit_transform(texts)\n\n\n# Prepare sparse vector\nsparse_vector = {\n    \"indices\": X.indices.tolist(),\n    \"values\": X.data.tolist()\n}\n\n\n# Return the JSON string directly\nreturn json.dumps(sparse_vector)\n\n\n# return {\n#   \"response\": {\n#     \"indices\": X.indices.tolist(),\n#     \"values\": X.data.tolist()\n#   }\n# }"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        -1536,
+        240
+      ],
+      "id": "7195160f-f661-4fb2-85ea-96e11deaf728",
+      "name": "Sparse Vector"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d7c91832-1033-40dd-8d2f-607f91238901",
+              "name": "query",
+              "value": "={{ $json.chatInput }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "156fb541-84c1-4b4e-bb36-ebf991923142",
+      "name": "query",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        -1888,
+        16
+      ],
+      "typeVersion": 3.4
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c525d286-83fb-466a-9c53-0f52f2afa8c6",
+              "name": "query",
+              "value": "={{ $('query').item.json.query }}",
+              "type": "string"
+            },
+            {
+              "id": "b2bab9f1-6147-4ed0-9a18-4ff2c29686f8",
+              "name": "doc",
+              "value": "={{ $json.pageContent }}",
+              "type": "string"
+            },
+            {
+              "id": "bdf7bdf7-4e8c-49ef-80d5-16217d69103b",
+              "name": "metadata",
+              "value": "={{ $json.metadata }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1312,
+        16
+      ],
+      "id": "cc6b2245-c934-48f3-be01-a11ea9557521",
+      "name": "set chunks",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Extract the query from the first item\nconst query = items[0].json.query;\n\n// Clean each doc string and pair with its metadata\nconst docsWithMetadata = items.map(item => {\n  let doc = item.json.doc;\n\n  // Remove actual newline characters, Unicode control characters, and backslashes\n  doc = doc\n    .replace(/[\\n\\r\\t]/g, ' ')         // Replace newlines, carriage returns, tabs with space\n    .replace(/[\\u0000-\\u001F\\u007F]/g, '') // Remove control characters\n    .replace(/\\\\/g, '')                // Remove backslashes\n\n  return {\n    doc: doc.trim(), // Optional: remove leading/trailing spaces\n    metadata: item.json.metadata\n  };\n});\n\n// Return the cleaned object\nreturn [\n  {\n    json: {\n      query,\n      docs: docsWithMetadata\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1088,
+        16
+      ],
+      "id": "b58106c9-e920-4854-81f3-5dbb6d86d2d1",
+      "name": "Clean chunks"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://huggingface-rerank-fastapi-app:8001/rerank",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"{{ $json.query }}\",\n  \"docs\": [\n    {{ $json.docs.map(item => JSON.stringify(item)).join(', ') }}\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -864,
+        16
+      ],
+      "id": "561333b4-1867-4ef4-9dd6-197897378604",
+      "name": "rerank results",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const reranked = $('rerank results').first().json.reranked;\nlet answer, citationIndexes;\n\n// Try to get the answer and citations from the normal output\ntry {\n  answer = $input.first().json.output.answer;\n  citationIndexes = $input.first().json.output.citations;\n} catch (e) {\n  // Fallback: try to extract from error message\n  const errorText = $input.first().json.error || '';\n  const jsonMatch = errorText.match(/```json\\s*([\\s\\S]*?)\\s*```/);\n\n  if (jsonMatch) {\n    try {\n      const parsed = JSON.parse(jsonMatch[1]);\n      answer = parsed.answer || parsed.properties?.answer;\n      citationIndexes = parsed.citations || parsed.properties?.citations;\n    } catch (parseError) {\n      throw new Error(\"Failed to parse fallback JSON: \" + parseError.message);\n    }\n  } else {\n    throw new Error(\"No valid answer or citations found.\");\n  }\n}\n\n// Format citation details\nconst citationDetails = citationIndexes.map(index => {\n  const item = reranked[index];\n  return {\n    index,\n    title: item?.metadata?.title || \"Untitled\",\n    // source: item?.metadata?.source || \"Unknown\"\n  };\n});\n\nreturn {\n  answer,\n  citations: citationDetails\n};\n\n\n\n// const reranked = $('rerank results').first().json.reranked;\n// const answer = $input.first().json.output.answer;\n// const citationIndexes = $input.first().json.output.citations;\n\n// const citationDetails = citationIndexes.map(index => {\n//   const item = reranked[index];\n//   return {\n//     index,\n//     title: item.metadata?.title || \"Untitled\",\n//     // source: item.metadata?.source || \"Unknown\"\n//   };\n// });\n\n// return {\n//   answer,\n//   citations: citationDetails\n// };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        112
+      ],
+      "id": "e112ab0d-14e0-4c21-887c-2bd4473007a4",
+      "name": "format result"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://mem0-local:8002/v1/memories/search/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Mem0-User-ID",
+              "value": "={{  'developer' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"{{ $('query').first().json.query }}\",\n  \"top_k\": 5\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -640,
+        16
+      ],
+      "id": "3e39a4b5-b2aa-44a7-903a-90643afd111d",
+      "name": "mem0: search"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://mem0-local:8002/v1/memories/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "=\n{\n  \"messages\": [\n   {\n      \"role\": \"assistant\",\n      \"content\": \"{{ $json.answer }}\"\n    }\n  ],\n  \"metadata\": {\n    \"source\": \"n8n\",\n    \"topic\": \"ai_response\",\n    \"citations\": {{ JSON.stringify($json.citations) }}\n  },\n  \"user_id\": \"developer\",\n  \"infer\": false\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        816,
+        288
+      ],
+      "id": "829f1dd6-c21b-4abf-99cd-d8ee0a8d51ca",
+      "name": "mem0: add"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Define score thresholds\nconst SCORE_THRESHOLD_rag = 0.01;\nconst SCORE_THRESHOLD_mem0 = 0.40;\n\n// Get reranked results from the rerank node\nconst reranked = ($('rerank results').first().json.reranked || [])\n  .filter(item => item.score >= SCORE_THRESHOLD_rag)\n  .map((item, index) => ({\n    content: item.doc,\n    title: item.metadata?.title || `Document ${index + 1}`,\n    index,\n    inputData: 'rerank'\n\n  }));\n\nconst mem0Results = ($('mem0: search').first().json.results || [])\n  .filter(item => item.score >= SCORE_THRESHOLD_mem0)\n  .map((item, index) => {\n    let title = [];\n\n    // If source is n8n and citations exist, include all citation titles\n    if (item.metadata?.source === 'n8n' && Array.isArray(item.metadata.citations)) {\n      title = item.metadata.citations.map(citation => `Mem0 Memory - ${citation.title}`);\n    }\n\n    // Fallback to metadata.title or default title if no citations\n    if (title.length === 0) {\n      title.push(`Mem0 Memory ${item.metadata?.title || index + 1}`);\n    }\n\n    return {\n      content: item.memory,\n      title, // array of titles with \"Mem0 Memory\" prefix\n      index: reranked.length + index,\n      inputData: 'mem0'\n    };\n  });\n\n\n\n\n\n// Merge both arrays\nconst mergedDocs = [...reranked, ...mem0Results];\n\n\n// Pass merged docs, query, and citationDetails forward\nreturn [\n  {\n    json: {\n      docs: mergedDocs,\n      query: $('query').first().json.query\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -432,
+        16
+      ],
+      "id": "dbef1c7d-ee81-44ee-8986-4b3961ee242c",
+      "name": "merge rag and memories"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "88677afd-0a64-49fd-9a2d-5a97630275c3",
+              "leftValue": "={{ $json.answer }}",
+              "rightValue": "answer is not provided in the given context",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        512,
+        256
+      ],
+      "id": "3de12c5e-a2c3-4410-99fb-54cbe8ed81f2",
+      "name": "If"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Answer the query based on chunks": {
+      "main": [
+        [
+          {
+            "node": "format result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Answer the query based on chunks",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Ollama2": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Qdrant with BM25 ReRank1",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sparse Vector": {
+      "ai_tool": [
+        [
+          {
+            "node": "Qdrant with BM25 ReRank1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant with BM25 ReRank1": {
+      "main": [
+        [
+          {
+            "node": "set chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "query": {
+      "main": [
+        [
+          {
+            "node": "Qdrant with BM25 ReRank1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set chunks": {
+      "main": [
+        [
+          {
+            "node": "Clean chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean chunks": {
+      "main": [
+        [
+          {
+            "node": "rerank results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "rerank results": {
+      "main": [
+        [
+          {
+            "node": "mem0: search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mem0: search": {
+      "main": [
+        [
+          {
+            "node": "merge rag and memories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format result": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "merge rag and memories": {
+      "main": [
+        [
+          {
+            "node": "Answer the query based on chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [],
+        [
+          {
+            "node": "mem0: add",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "889576ed-4096-4dfb-abe8-f495b42cb14f",
+  "meta": {
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "wbN1f9gKkOLPA5Tg",
+  "tags": []
+}

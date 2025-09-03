@@ -1,0 +1,423 @@
+{
+  "name": "rag_embedding",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c31ec468-27db-4a48-b375-ee8c8c40a431",
+      "name": "When clicking ‘Test workflow’",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -3200,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "id": "da8f97e5-5d33-48f8-a7b0-2dc26b0a0812",
+      "name": "Extract from File",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -1632,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const chunks = [];\nconst chunkSize = 1000;\nconst chunkOverlap = 200;\nconst text = $('Extract from File').item.json.text.replace(/\\n/, '');\n\nfor (let i=0,j=Math.round(text.length/chunkSize)+1;i<j;i++) {\n  chunks.push(\n    text.substr(\n      Math.max(0,(i * chunkSize)-chunkOverlap),\n      chunkSize\n    )\n  );\n}\n\nreturn { chunks };"
+      },
+      "id": "521c9931-8d5b-42dc-b696-dd589d84b832",
+      "name": "Create Chunks From Doc",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1408,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Create Collection!\nYou need to create a Qdrant Collection as follows:\n\n* Go to http[s]:\\//<qdrant_url>/dashboard#/console\nIf you are hosting locally, this is usually http://localhost:6333/dashboard#/console\n* Copy the following into the left panel. This will tell Qdrant to create a new collection called “contextual_retrieval_example”. You can change this of course but you’ll also need to change all “collectionName” references in the template as well!\n\n```\nPUT collections/hybrid_rag\n{\n  \"vectors\": {\n    \"default\": {\n      \"distance\": \"Dot\",\n      \"size\": 768\n    }\n  },\n  \"sparse_vectors\": {\n    \"bm42\": {\n      \"modifier\": \"idf\"\n    }\n  }\n}\n```",
+        "height": 505.701259707935,
+        "width": 516.3129732020735
+      },
+      "id": "07c1ca91-b461-47ff-b7e4-5f8e73de0fd6",
+      "name": "Sticky Note5",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2608,
+        -384
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "chunks",
+        "options": {
+          "destinationFieldName": "chunk"
+        }
+      },
+      "id": "d01a2844-6fa9-4656-bfd9-4acd0a2250ff",
+      "name": "Chunks To List",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -1184,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "python",
+        "pythonCode": "chunk = _('Chunks To List').item.json.chunk\n\n# Ensure chunk is not empty or only whitespace\nif not chunk or not chunk.strip():\n    return {\"error\": \"Chunk is empty or invalid.\"}\n\ntexts = [chunk]\n\nfrom sklearn.feature_extraction.text import TfidfVectorizer\n\n# Create TF-IDF vectorizer\nvectorizer = TfidfVectorizer()\n\n# Fit and transform the texts to generate TF-IDF vectors\nX = vectorizer.fit_transform(texts)\n\nreturn {\n  \"sparse\": {\n    \"indices\": X.indices.tolist(),\n    \"values\": X.data.tolist()\n  }\n}"
+      },
+      "id": "1d8092d8-c1f5-4787-ae6f-4228a05ef8c6",
+      "name": "Generate TF-IDF Sparse Vectors",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -960,
+        80
+      ],
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "069d067c-3534-4939-8ff4-34dee02a9436",
+              "name": "chunk",
+              "value": "={{ $('Chunks To List').item.json.chunk }}",
+              "type": "string"
+            },
+            {
+              "id": "fa48ddaa-4658-463a-b1af-8308c24e325a",
+              "name": "sparse",
+              "value": "={{ $json.sparse }}",
+              "type": "object"
+            },
+            {
+              "id": "442efe87-a826-402c-aadc-909923915d30",
+              "name": "title",
+              "value": "={{ $('Get pdf').item.json.fileName }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "63efe9f2-a2a4-4cbd-bd9a-dbc20758df2c",
+      "name": "Get Values",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -736,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { QdrantClient } = require('@qdrant/js-client-rest');\nconst client = new QdrantClient({ url: 'http://qdrant:6333' });\nconst collectionName = 'hybrid_rag';\n\nconst inputItems = items;\n\n// Step 1: Get unique titles\nconst seenTitles = new Set();\nconst uniqueItems = [];\n\nfor (const item of inputItems) {\n  const title = item.json.title?.trim();\n  if (title && !seenTitles.has(title)) {\n    seenTitles.add(title);\n    uniqueItems.push(item);\n\n    // Step 2: Delete existing vectors by title\n    await client.delete(collectionName, {\n      filter: {\n        must: [\n          {\n            key: \"metadata.title\",\n            match: { value: title }\n          }\n        ]\n      }\n    });\n  }\n}\n\n// Step 3: Return all items (not just unique ones) for processing\nreturn inputItems;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -512,
+        80
+      ],
+      "id": "024d614a-457a-429c-9803-362390d9a188",
+      "name": "deduplicate"
+    },
+    {
+      "parameters": {
+        "command": "=ls -1 {{ $json.directory_path }}"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        -2752,
+        160
+      ],
+      "id": "9e7ea304-9d9d-4c49-afa9-598d6b2f7f53",
+      "name": "Execute Command"
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = $json.stdout || \"\";\nconst files = output.split(\"\\n\").filter(f => f.endsWith(\".pdf\"));\n\nreturn files.map(file => ({\n  json: {\n    fileName: file,\n    filePath: `${$('directory_path').first().json.directory_path}/${file}`\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2528,
+        160
+      ],
+      "id": "a0f6f2e7-cbf4-4b3c-8bb2-c3f9ebdf4a4b",
+      "name": "files_to_list"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -2304,
+        160
+      ],
+      "id": "aa86b6db-b202-4732-9d01-53e2c62b1510",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "01e8d364-e1df-49e9-aed2-dd39acc46271",
+              "name": "directory_path",
+              "value": "/data/shared/reviewPapers",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2976,
+        160
+      ],
+      "id": "1231a9e9-452e-477f-aba8-22efa8fe9fcc",
+      "name": "directory_path"
+    },
+    {
+      "parameters": {
+        "jsCode": "const path = $json.filePath;\nconst encodedPath = path.replace(/([\"\\s'$`\\\\])/g, \"\\\\$1\");\n\nreturn [{ json: { filePath: encodedPath } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2080,
+        80
+      ],
+      "id": "1a0e7878-be9f-4a32-be4a-b83d5ca0b8f4",
+      "name": "fix path"
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $json.filePath }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        -1856,
+        80
+      ],
+      "id": "106a93a8-4404-4bf6-bfec-ca4373cafa1b",
+      "name": "Get pdf"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "bLXPMzMIMEoxEM6e",
+          "mode": "list",
+          "cachedResultName": "My Sub-Workflow 1"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -288,
+        160
+      ],
+      "id": "6ea96f5e-5748-4bc1-88ac-510b0e7db467",
+      "name": "Execute Workflow"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Test workflow’": {
+      "main": [
+        [
+          {
+            "node": "directory_path",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Create Chunks From Doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Chunks From Doc": {
+      "main": [
+        [
+          {
+            "node": "Chunks To List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunks To List": {
+      "main": [
+        [
+          {
+            "node": "Generate TF-IDF Sparse Vectors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate TF-IDF Sparse Vectors": {
+      "main": [
+        [
+          {
+            "node": "Get Values",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Values": {
+      "main": [
+        [
+          {
+            "node": "deduplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "deduplicate": {
+      "main": [
+        [
+          {
+            "node": "Execute Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Command": {
+      "main": [
+        [
+          {
+            "node": "files_to_list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "files_to_list": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "fix path",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "directory_path": {
+      "main": [
+        [
+          {
+            "node": "Execute Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fix path": {
+      "main": [
+        [
+          {
+            "node": "Get pdf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get pdf": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1fec53a4-429e-4ee8-90fa-a72c8ec4d666",
+  "meta": {
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "FFEiypue22Ry7VbO",
+  "tags": []
+}

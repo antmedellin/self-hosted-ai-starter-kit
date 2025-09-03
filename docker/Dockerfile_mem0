@@ -1,0 +1,44 @@
+#cpu
+FROM pytorch/pytorch:latest
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt update
+RUN apt upgrade -y
+
+RUN apt install -y \
+    git \
+    build-essential \
+    wget \
+    unzip \
+    pkg-config \
+    cmake \
+    pip \
+    sudo \
+    g++ \
+    ca-certificates \
+    htop \
+    nano \
+    libgl1-mesa-glx \
+    gdal-bin \    
+    python3-tk
+
+
+RUN pip install -U sentence-transformers fastapi uvicorn transformers
+
+# mem0 + fastapi + uvicorn + qdrant-client (pulled by mem0, but explicit is fine)
+RUN pip install --no-cache-dir "mem0ai>=0.1.0" fastapi uvicorn ollama
+
+COPY docker/mem0_app.py /home/app.py 
+
+RUN useradd -m developer 
+
+RUN echo "developer ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/developer
+
+USER developer
+
+
+WORKDIR /home
+
+
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8002"]

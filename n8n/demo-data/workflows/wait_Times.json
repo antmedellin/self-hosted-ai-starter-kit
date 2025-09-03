@@ -1,0 +1,357 @@
+{
+  "name": "wait_Times",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1584,
+        272
+      ],
+      "id": "bb569683-26eb-44af-9c81-2e7140e5562c",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "https://bwt.cbp.gov/api/bwtRss/rssbyportnum/HTML/COV/230502",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1056,
+        304
+      ],
+      "id": "a850d471-9756-4ab6-9eba-f9f8dbd5c00e",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "dataPropertyName": "=xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.xml",
+      "typeVersion": 1,
+      "position": [
+        -608,
+        304
+      ],
+      "id": "743c9854-37b4-4921-902b-23a7d6efe3af",
+      "name": "XML"
+    },
+    {
+      "parameters": {
+        "jsCode": "const xmlRaw = $json.data;\n\n// Replace all single quotes in tags with double quotes\nconst cleanedXml = xmlRaw.replace(/<[^>]+>/g, tag =>\n  tag.replace(/'/g, '\"')\n);\n\nreturn [{ json: { xml: cleanedXml } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -832,
+        304
+      ],
+      "id": "24859fe8-4f32-4104-9a38-c566d4788ec1",
+      "name": "clean xml"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json.rss.channel.item;\n\n\nconst rawPubDate = $input.first().json.rss.channel.pubDate;\n// Remove day of week (e.g., \"Fri, \") using regex or split\nconst pubDate = rawPubDate.replace(/^\\w{3},\\s*/, '');\n\nconst location = item.title;\nconst cross_type = item.description.h4.b;\n\n// Extract raw description text\nconst descText = item.description._;\n\n// Regex helpers\nconst genMatch = descText.match(/General Lanes:.*?(\\d+)\\s+min delay\\s+(\\d+)\\s+lane\\(s\\)/);\nconst fastMatch = descText.match(/Fast Lanes:.*?(\\d+)\\s+min delay\\s+(\\d+)\\s+lane\\(s\\)/);\n\nconst genLaneDelay = genMatch ? genMatch[1] : null;\nconst genLaneNum = genMatch ? genMatch[2] : null;\n\nconst fastLaneDelay = fastMatch ? fastMatch[1] : null;\nconst fastLaneNum = fastMatch ? fastMatch[2] : null;\n\nreturn [\n  {\n    json: {\n      pubDate,\n      location,\n      cross_type,\n      genLaneDelay,\n      genLaneNum,\n      fastLaneDelay,\n      fastLaneNum\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -384,
+        304
+      ],
+      "id": "55d7cd6d-7b7b-40a0-a8dd-194f8a824549",
+      "name": "extract_fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst header = [\n  \"Publish Date and Time\",\n  \"Crossing Location\",\n  \"Crossing Type\",\n  \"General Lane Delay\",\n  \"General Lane Number of Lanes\",\n  \"Fast Lane Delay\",\n  \"Fast Lane Number of Lanes\"\n].map(h => `\"${h}\"`).join(',');\n\n\nconst rows = $('extract_fields').all().map(item => {\n  const {\n    pubDate,\n    location,\n    cross_type,\n    genLaneDelay,\n    genLaneNum,\n    fastLaneDelay,\n    fastLaneNum\n  } = item.json;\n\n  // const escape = str => `\"${String(str).replace(/\"/g, '\"\"').trim()}\"`;\n\n  const escape = str => String(str).replace(/\"/g, '\"\"').trim();\n\n  return [\n    escape(pubDate),\n    escape(location),\n    escape(cross_type),\n    escape(genLaneDelay),\n    escape(genLaneNum),\n    escape(fastLaneDelay),\n    escape(fastLaneNum)\n  ].join(',');\n});\n\n// return [{ json: { csvRow: [header, ...rows].join('\\n') } }];\n// return [{ json: { csvRow:  rows.join('\\n') + '\\n' } }];\n\n\nconst csvContent = [header, ...rows].join('\\n')+ '\\n';\nconst buffer = Buffer.from(csvContent, 'utf8');\n\nreturn [\n  {\n    binary: {\n      data: {\n        data: buffer.toString('base64'),\n        mimeType: 'text/csv',\n        fileName: 'border_crossing_data.csv'\n      }\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        400
+      ],
+      "id": "3e7a4af0-9a69-4c05-9674-ed6574bb14f8",
+      "name": "format_for_csv"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8e331428-7600-446a-b710-68a9186131a5",
+              "leftValue": "={{ $json.mimeType }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        64,
+        304
+      ],
+      "id": "32d01791-9130-4ba8-82f2-14c5bab901e7",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $('set filename').item.json.outputFileName }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        304
+      ],
+      "id": "81886bdb-488c-4875-9fa9-72a603de6126",
+      "name": "Read Files from Disk1",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $('set filename').item.json.outputFileName }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        496,
+        400
+      ],
+      "id": "e6336300-edad-4327-928d-4534939356e4",
+      "name": "Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "77c07261-37f4-408b-b451-4dd0b6808cb2",
+              "name": "outputFileName",
+              "value": "/data/shared/data/waitTimes/test.csv",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1264,
+        304
+      ],
+      "id": "ac0a14a1-036c-4224-807c-fb1a25a6a224",
+      "name": "set filename"
+    },
+    {
+      "parameters": {
+        "command": "=\necho \"{{ $json.csvRow }}\" >> {{ $('set filename').item.json.outputFileName }}\n"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        544,
+        192
+      ],
+      "id": "eb40b1f9-126c-48ca-8ab5-bb63ffcf9f7b",
+      "name": "append to csv"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst rows = $('extract_fields').all().map(item => {\n  const {\n    pubDate,\n    location,\n    cross_type,\n    genLaneDelay,\n    genLaneNum,\n    fastLaneDelay,\n    fastLaneNum\n  } = item.json;\n\n  const escape = str => `\"${String(str).replace(/\"/g, '\"\"').trim()}\"`;\n\n  return [\n    escape(pubDate),\n    escape(location),\n    escape(cross_type),\n    escape(genLaneDelay),\n    escape(genLaneNum),\n    escape(fastLaneDelay),\n    escape(fastLaneNum)\n  ].join(',');\n});\n\n// return [{ json: { csvRow: [rows].join('\\n') } }];\n\n\nreturn [{ json: { csvRow:  rows.join('\\n') } }];\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        192
+      ],
+      "id": "de0c77f6-8864-4795-b53e-ec05bccbd985",
+      "name": "format_for_csv1"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "triggerAtMinute": 20
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1568,
+        496
+      ],
+      "id": "8ec29d1c-8175-4c4a-8a94-c5ee97bb39ed",
+      "name": "Schedule Trigger"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "set filename",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "clean xml",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "clean xml": {
+      "main": [
+        [
+          {
+            "node": "XML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "XML": {
+      "main": [
+        [
+          {
+            "node": "extract_fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "extract_fields": {
+      "main": [
+        [
+          {
+            "node": "Read Files from Disk1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format_for_csv": {
+      "main": [
+        [
+          {
+            "node": "Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Files from Disk1": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "format_for_csv1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "format_for_csv",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set filename": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format_for_csv1": {
+      "main": [
+        [
+          {
+            "node": "append to csv",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "set filename",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "c79ef2ad-2103-4c1a-8630-ba77159dadda",
+  "meta": {
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "YFhORfDPxqQum28o",
+  "tags": []
+}
