@@ -214,3 +214,17 @@ services:
         condition: service_healthy
     entrypoint: >
       sh -c "sleep 5; curl -X PUT http://qdrant:6333/collections/hybrid_rag -H 'Content-Type: application/json' -d '{\"vectors\": {\"default\": {\"distance\": \"Dot\", \"size\": 768}}, \"sparse_vectors\": {\"bm42\": {\"modifier\": \"idf\"}}}'"
+  
+  neo4j:
+    image: neo4j:latest
+    container_name: neo4j
+    ports:
+      - 7474:7474
+      - 7687:7687
+    volumes:
+      - ./neo4j/data:/data
+      - ./neo4j/logs:/logs
+    environment:
+      - NEO4J_AUTH=neo4j/password # username: neo4j, password: password
+      - NEO4JLABS_PLUGINS=["bloom", "graph-data-science"]
+    networks: ['demo']
