@@ -52,7 +52,27 @@ x-init-ollama: &init-ollama
     - "-c"
     - "sleep 3; ollama pull llama3.2; ollama pull nomic-embed-text:v1.5; ollama pull qwen3:0.6b"
 
+
+
 services:
+
+  postgres-init:
+    image: postgres:16-alpine
+    networks: ['demo']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        sleep 5
+        PGPASSWORD=$$POSTGRES_PASSWORD psql -h postgres -U root -d n8n -c "CREATE TABLE IF NOT EXISTS public.grants_gov ( id BIGINT PRIMARY KEY, \"ID number\" BIGINT, \"OpportunityNumber\" TEXT, \"Title\" TEXT, \"Agency\" TEXT, \"Top Agency\" TEXT, \"Award Cieling\" BIGINT, \"Award Floor\" BIGINT, \"Synopsis\" TEXT, \"Last Update\" TEXT, \"Posting Date\" TEXT, \"Due Date\" TEXT, \"Estimated Funding\" BIGINT );"
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+        - postgres_storage:/var/lib/postgresql/data
+
   postgres:
     image: postgres:16-alpine
     hostname: postgres
@@ -214,6 +234,16 @@ services:
         condition: service_healthy
     entrypoint: >
       sh -c "sleep 5; curl -X PUT http://qdrant:6333/collections/hybrid_rag -H 'Content-Type: application/json' -d '{\"vectors\": {\"default\": {\"distance\": \"Dot\", \"size\": 768}}, \"sparse_vectors\": {\"bm42\": {\"modifier\": \"idf\"}}}'"
+
+  qdrant-init-second:
+    image: curlimages/curl:latest
+    container_name: qdrant-init-second
+    networks: ['demo']
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "sleep 5; curl -X PUT http://qdrant:6333/collections/grants_rag -H 'Content-Type: application/json' -d '{\"vectors\": {\"default\": {\"distance\": \"Dot\", \"size\": 768}}, \"sparse_vectors\": {\"bm42\": {\"modifier\": \"idf\"}}}'"
   
   neo4j:
     image: neo4j:latest
@@ -228,3 +258,8 @@ services:
       - NEO4J_AUTH=neo4j/password # username: neo4j, password: password
       - NEO4JLABS_PLUGINS=["bloom", "graph-data-science"]
     networks: ['demo']
+
+
+
+    #  to do install community node automatically
+    # n8n-nodes-qdrant 

@@ -1,0 +1,1363 @@
+{
+  "name": "grant embed1",
+  "nodes": [
+    {
+      "parameters": {
+        "fieldToSplitOut": "oppHits",
+        "options": {}
+      },
+      "id": "43f93cc7-aeb1-49c9-abf3-5708fe6cfb24",
+      "name": "Grants to List1",
+      "type": "n8n-nodes-base.splitOut",
+      "position": [
+        -1904,
+        -96
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://apply07.grants.gov/grantsws/rest/opportunity/details",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "oppId",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "998f39d2-a8d7-4465-b98f-b74b2a84f978",
+      "name": "Get Grant Details1",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -1680,
+        -96
+      ],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1456,
+        -96
+      ],
+      "id": "0b78ed51-85bb-459b-a5d2-79f883a3ce6b",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://apply07.grants.gov/grantsws/rest/opportunities/search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"keyword\": \"\",\n  \"cfda\": null,\n  \"agencies\": null,\n  \"sortBy\": \"openDate|desc\",\n  \"rows\": 5000,\n  \"eligibilities\": null,\n  \"fundingCategories\": null,\n  \"fundingInstruments\": null,\n  \"dateRange\": \"{{ $json[\"How many days back do you want to include in search to add to database?\"] }}\",\n  \"oppStatuses\": \"forecasted|posted\"\n}",
+        "options": {}
+      },
+      "id": "6b4cd108-31a8-4374-8308-79dbfbbbf711",
+      "name": "AI Grants search1",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -2128,
+        -96
+      ],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT EXISTS (\n  SELECT 1 FROM grants_gov WHERE \"ID number\" = {{ $json.id }}\n)::int;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1088,
+        -304
+      ],
+      "id": "e0b51397-1fb7-4328-b508-739bb4a676d2",
+      "name": "see if id exists1",
+      "credentials": {
+        "postgres": {
+          "id": "kkz7AYyjNyf7XdIL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "grants_gov",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Loop Over Items1').item.json.id }}",
+            "ID number": "={{ $('Loop Over Items1').item.json.id }}",
+            "OpportunityNumber": "={{ $('Loop Over Items1').item.json.opportunityNumber }}",
+            "Title": "={{ $('Loop Over Items1').item.json.opportunityTitle }}",
+            "Agency": "={{ $('Loop Over Items1').item.json.synopsis?.agencyName ?? $('Loop Over Items1').item.json.agencyDetails?.agencyName ?? 'Unknown Agency' }}",
+            "Top Agency": "={{ $('Loop Over Items1').item.json.synopsis?.topAgencyDetails?.agencyName || $('Loop Over Items1').item.json.topAgencyDetails?.agencyName || '' }}",
+            "Award Cieling": "={{ isNaN(parseInt($('Loop Over Items1').item.json.synopsis?.synopsisDesc)) ? -1 : parseInt($('Loop Over Items1').item.json.synopsis.synopsisDesc) }}",
+            "Award Floor": "={{ isNaN(parseInt($('Loop Over Items1').item.json.synopsis?.synopsisDesc)) ? -1 : parseInt($('Loop Over Items1').item.json.synopsis.synopsisDesc) }}",
+            "Synopsis": "={{ $('Loop Over Items1').item.json.synopsis?.synopsisDesc ?? $('Loop Over Items1').item.json.forecast?.forecastDesc ?? '' }}",
+            "Last Update": "={{ $('Loop Over Items1').item.json.synopsisAttachmentFolders?.[0]?.lastUpdatedDate ?? $('Loop Over Items1').item.json.forecast?.lastUpdatedDate ?? $('Loop Over Items1').item.json.synopsis?.lastUpdatedDate ?? '' }}",
+            "Posting Date": "={{ $('Loop Over Items1').item.json.synopsisAttachmentFolders?.[0]?.createdDate ?? $('Loop Over Items1').item.json.forecast?.postingDate ?? $('Loop Over Items1').item.json.synopsis?.createdDate ?? '' }}",
+            "Due Date": "={{ $('Loop Over Items1').item.json.originalDueDate ?? $('Loop Over Items1').item.json.forecast?.estApplicationResponseDate ?? $('Loop Over Items1').item.json.synopsis?.responseDateDesc ?? '' }}",
+            "Estimated Funding": "={{ $('Loop Over Items1').item.json.synopsis?.estimatedFunding ?? $('Loop Over Items1').item.json.forecast?.estimatedFunding ?? -1 }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ID number",
+              "displayName": "ID number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "OpportunityNumber",
+              "displayName": "OpportunityNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "Title",
+              "displayName": "Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "Agency",
+              "displayName": "Agency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "Due Date",
+              "displayName": "Due Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "Top Agency",
+              "displayName": "Top Agency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "Posting Date",
+              "displayName": "Posting Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "Last Update",
+              "displayName": "Last Update",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "Estimated Funding",
+              "displayName": "Estimated Funding",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "Award Cieling",
+              "displayName": "Award Cieling",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "Award Floor",
+              "displayName": "Award Floor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "Synopsis",
+              "displayName": "Synopsis",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "Synopsis Summary",
+              "displayName": "Synopsis Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -784,
+        -304
+      ],
+      "id": "1aaa4d3c-d051-4a44-9570-57c77300c9d4",
+      "name": "Insert data to grants1",
+      "credentials": {
+        "postgres": {
+          "id": "kkz7AYyjNyf7XdIL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2352,
+        208
+      ],
+      "id": "bb61f2a8-f63c-4f25-adda-dafb21d0ae23",
+      "name": "insert grants to db"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "name": "Replace Me",
+      "typeVersion": 1,
+      "position": [
+        784,
+        208
+      ],
+      "id": "9cb579d8-f492-40c8-b358-f50177c7087d"
+    },
+    {
+      "parameters": {
+        "resource": "point",
+        "operation": "scrollPoints",
+        "collectionName": {
+          "__rl": true,
+          "value": "grants_rag",
+          "mode": "list",
+          "cachedResultName": "grants_rag"
+        },
+        "limit": 5555,
+        "filter": "=",
+        "requestOptions": {}
+      },
+      "type": "n8n-nodes-qdrant.qdrant",
+      "typeVersion": 1,
+      "position": [
+        -1680,
+        208
+      ],
+      "id": "0db79dd2-17aa-4c9f-ae1e-d4d8c7efec93",
+      "name": "Scroll Points",
+      "executeOnce": true,
+      "credentials": {
+        "qdrantRestApi": {
+          "id": "ycqSSDUpYLqp9iMI",
+          "name": "Qdrant account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node\n\n// Assuming `items` contains the paginated results from Qdrant\nconst allPoints = []; // Initialize an array to hold all points\n\n// Iterate through all input items\nfor (const item of items) {\n    const id = item.json.id;\n    if (id && id.toString().length >= 5 && id.toString().length <= 6) {\n        // Check if the ID length is between 5 and 6 digits\n        allPoints.push(id); // Add the ID to the allPoints array\n    }\n}\n\n// Return a single item with the flattened list of all points\nreturn [\n    {\n        json: {\n            all_points: allPoints, // The flattened list of all points\n            total_points: allPoints.length // Total number of points\n        }\n    }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1904,
+        208
+      ],
+      "id": "ab4cfdd1-b926-464b-a983-1c4659d2cfc8",
+      "name": "Convert to Array"
+    },
+    {
+      "parameters": {
+        "jsCode": "// const items = $input.first().json.result\n// const items_qdrant =  $input.first().json.result.points[1].id|| [];\n\n\n// return {items_qdrant};\nreturn items.map(item => {\n    const points = item.json.result.points || []; // Access the points array\n    const ids = points.map(point => point.payload.metadata.id); // Extract only the 'id' values\n    return { json: { ids } }; // Return the IDs as an array\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1456,
+        208
+      ],
+      "id": "20c329a3-073c-48c6-9720-61c4533a7155",
+      "name": "ID Retrieval"
+    },
+    {
+      "parameters": {
+        "jsCode": "// // Get merged input item\n// const items_postgres = $('Convert to Array').first().json.all_points || [];\n// const items_qdrant = $input.first().json.ids  || [];\n\n// // Check both are arrays\n// if (!Array.isArray(items_postgres) || !Array.isArray(items_qdrant)) {\n//   throw new Error(\"'items_postgres' and 'items_qdrant' must both be arrays.\");\n// }\n\n// // const items_in_postgres_not_in_qdrant;\n// // // Use a Set for efficient lookup\n// const qdrantSet = new Set(items_qdrant);\n\n// // Remove duplicates from 'id'\n// const cleanedList = items_postgres.filter(entry => !qdrantSet.has(entry));\n\n// // Return cleaned list\n// return [\n//   {\n//    cleanedList,\n//     items_qdrant,\n//     items_postgres\n   \n//   }\n// ];\n\n\n// Get merged input item\nconst items_postgres = $('Convert to Array').first().json.all_points || [];\nconst items_qdrant = $input.first().json.ids || [];\n\n// Check both are arrays\nif (!Array.isArray(items_postgres) || !Array.isArray(items_qdrant)) {\n  throw new Error(\"'items_postgres' and 'items_qdrant' must both be arrays.\");\n}\n\n// Use a Set for efficient lookup\nconst qdrantSet = new Set(items_qdrant);\n\n// Filter out items that are in postgres but not in qdrant\nconst cleanedList = items_postgres.filter(entry => !qdrantSet.has(entry));\n\n// Return each item in cleanedList as a separate output item\nreturn cleanedList.map(item => ({\n  json: {\n    cleanedItem: item\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1232,
+        208
+      ],
+      "id": "a1e78587-c680-42c1-b2e4-e5dfdc1783df",
+      "name": "deduplicate"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id FROM grants_gov\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -2128,
+        208
+      ],
+      "id": "ba0084dd-80c3-4ce6-b3a9-10d7f7ca5c3b",
+      "name": "see if id exists2",
+      "alwaysOutputData": false,
+      "credentials": {
+        "postgres": {
+          "id": "kkz7AYyjNyf7XdIL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "grants_gov",
+          "mode": "list",
+          "cachedResultName": "grants_gov"
+        },
+        "returnAll": true,
+        "where": {
+          "values": [
+            {
+              "column": "ID number",
+              "value": "={{ $json.cleanedItem }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -784,
+        144
+      ],
+      "id": "ad22cf8b-82e2-48ce-b75d-da5dacc58b94",
+      "name": "get rows from grants3",
+      "credentials": {
+        "postgres": {
+          "id": "kkz7AYyjNyf7XdIL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fe075049-38c1-4849-8cd8-e552ab0a20fc",
+              "name": "Synopsis",
+              "value": "={{ $json.Synopsis }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -560,
+        144
+      ],
+      "id": "572164d5-eab3-49c9-9cea-25d0607aeeaf",
+      "name": "get Synopsis for vector1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1008,
+        208
+      ],
+      "id": "2051878e-1453-46e9-b32b-4adf0a23dac8",
+      "name": "Loop Over Items2"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// const chunks = [];\n// const chunkSize = 1000;\n// const chunkOverlap = 200;\n// const text = $json.Synopsis.replace(/\\n/, '');\n\n// for (let i=0,j=Math.round(text.length/chunkSize)+1;i<j;i++) {\n//   chunks.push(\n//     text.substr(\n//       Math.max(0,(i * chunkSize)-chunkOverlap),\n//       chunkSize\n//     )\n//   );\n// }\n\n// return { chunks };\n\nconst chunks = [];\nconst chunkSize = 1000;\nconst chunkOverlap = 200;\n\n// Clean and normalize the input text\nconst rawText = $json.Synopsis || '';\nconst text = rawText.replace(/\\s+/g, ' ').trim();\n\nif (!text) {\n  throw new Error('Synopsis text is empty or invalid.');\n}\n\nfor (let i = 0; i < text.length; i += chunkSize - chunkOverlap) {\n  const chunk = text.substring(i, i + chunkSize).trim();\n\n  // Skip empty or whitespace-only chunks\n  if (chunk && chunk.length > 0) {\n    chunks.push(chunk);\n  }\n}\n\nreturn { chunks };"
+      },
+      "id": "33a41299-b685-4da2-b6b9-686823fa03ee",
+      "name": "Create Chunks From Doc",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -336,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "chunks",
+        "options": {
+          "destinationFieldName": "chunk"
+        }
+      },
+      "id": "de075021-d8fc-4723-b4cd-46741ed0f0a5",
+      "name": "Chunks To List",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "python",
+        "pythonCode": "# # chunk = _('Chunks To List').item.json.chunk\n\n# # # Ensure chunk is not empty or only whitespace\n# # if not chunk or not chunk.strip():\n# #     return {\"error\": \"Chunk is empty or invalid.\"}\n\n# # texts = [chunk]\n\n# # from sklearn.feature_extraction.text import TfidfVectorizer\n\n# # # Create TF-IDF vectorizer\n# # vectorizer = TfidfVectorizer()\n\n# # # Fit and transform the texts to generate TF-IDF vectors\n# # X = vectorizer.fit_transform(texts)\n\n# # return {\n# #   \"sparse\": {\n# #     \"indices\": X.indices.tolist(),\n# #     \"values\": X.data.tolist()\n# #   }\n# # }\n\n# import re\n# from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS\n\n# chunk = _('Chunks To List').item.json.chunk\n\n# # Step 1: Basic empty/whitespace check\n# if not chunk or not chunk.strip():\n#     raise ValueError(\"Chunk is empty or whitespace only.\")\n\n# # Step 2: Remove HTML tags and punctuation\n# cleaned = re.sub(r'<[^>]+>', '', chunk)  # remove HTML\n# cleaned = re.sub(r'[^\\w\\s]', '', cleaned)  # remove punctuation\n\n# # Step 3: Tokenize and filter stop words\n# tokens = [word for word in cleaned.strip().split() if word.lower() not in ENGLISH_STOP_WORDS]\n\n# # Step 4: Validate token presence\n# if not tokens:\n#     # raise ValueError(\"Chunk contains no valid tokens after cleaning.\")\n#     tokens = [\"university\", \"Texas\", \"rio\", \"grande\", \"valley\"]\n\n\n\n# # Step 5: Proceed with TF-IDF\n# vectorizer = TfidfVectorizer()\n# X = vectorizer.fit_transform([' '.join(tokens)])\n\n# return {\n#   \"sparse\": {\n#     \"indices\": X.indices.tolist(),\n#     \"values\": X.data.tolist()\n#   }\n# }\nimport re\nfrom sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS\n\nchunk = _('Chunks To List').item.json.chunk\n\n# Step 1: Basic empty/whitespace check\nif not chunk or not chunk.strip():\n    chunk = \"university of Texas rio grande valley\"\n\n# Step 2: Remove HTML tags and punctuation\ncleaned = re.sub(r'<[^>]+>', '', chunk)  # remove HTML\ncleaned = re.sub(r'[^\\w\\s]', '', cleaned)  # remove punctuation\n\n# Step 3: Tokenize and filter stop words\ntokens = [word for word in cleaned.strip().split() if word.lower() not in ENGLISH_STOP_WORDS]\n\n# Step 4: Fallback if no valid tokens\nif not tokens:\n    tokens = [\"university\", \"Texas\", \"rio\", \"grande\", \"valley\"]\n\n# Step 5: Try TF-IDF, fallback if it fails\ntry:\n    vectorizer = TfidfVectorizer()\n    X = vectorizer.fit_transform([' '.join(tokens)])\n    indices = X.indices.tolist()\n    values = X.data.tolist()\nexcept ValueError:\n    indices = [0]\n    values = [1.0]\n\nreturn {\n  \"sparse\": {\n    \"indices\": indices,\n    \"values\": values\n  }\n}"
+      },
+      "id": "164c6c20-a07d-4dba-b914-987a0b92d992",
+      "name": "Generate TF-IDF Sparse Vectors",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        144
+      ],
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "069d067c-3534-4939-8ff4-34dee02a9436",
+              "name": "chunk",
+              "value": "={{ $('Chunks To List').item.json.chunk }}",
+              "type": "string"
+            },
+            {
+              "id": "fa48ddaa-4658-463a-b1af-8308c24e325a",
+              "name": "sparse",
+              "value": "={{ $json.sparse }}",
+              "type": "object"
+            },
+            {
+              "id": "442efe87-a826-402c-aadc-909923915d30",
+              "name": "id",
+              "value": "={{ $('get rows from grants3').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "7cfceee2-0022-45ba-a6f9-1a1d365c92bb",
+              "name": "opp_num",
+              "value": "={{ $('get rows from grants3').item.json.OpportunityNumber }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ac8d1d62-a474-4bb2-ab37-ade21621090a",
+      "name": "Get Values",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        336,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "KexnP9y8YNrakX4E",
+          "mode": "list",
+          "cachedResultName": "My Sub-Workflow grants"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        560,
+        144
+      ],
+      "id": "fb615a73-3a0d-4fba-989b-5dac082a74a0",
+      "name": "Call 'My Sub-Workflow grants'"
+    },
+    {
+      "parameters": {
+        "formTitle": "Days to search",
+        "formDescription": "Searches Grant.Gov for below time frame",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "How many days back do you want to include in search to add to database?",
+              "fieldType": "number",
+              "placeholder": "30",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -2352,
+        -96
+      ],
+      "id": "7fbe1c0e-a7b4-46e7-a07c-7d24f8b8e4a9",
+      "name": "grants gov search",
+      "webhookId": "b9549cdf-5523-4b1c-b4f6-257d69855950"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "73a7e65a-1df2-4eb3-af7c-97f73d3c7d4e",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "position": [
+        -2352,
+        544
+      ],
+      "webhookId": "cd2703a7-f912-46fe-8787-3fb83ea116ab",
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text:v1.5"
+      },
+      "id": "36e420cd-1f0e-4f0c-9f62-0a8251dd68b1",
+      "name": "Embeddings Ollama2",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
+      "typeVersion": 1,
+      "position": [
+        -1904,
+        768
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "code": {
+          "execute": {
+            "code": "const { QdrantClient } = require('@qdrant/js-client-rest');\nconst { BM25Retriever } = require(\"@langchain/community/retrievers/bm25\");\nconst { DynamicTool } = require(\"@langchain/core/tools\");\n\n// 1. Tool Config\nconst name = 'get_sparse_vector';\nconst description = 'Generates TD-IDF sparse vector for query';\n\n// 2. Qdrant config\nconst client = new QdrantClient({ url: 'http://qdrant:6333' });\nconst collectionName = 'grants_rag';\nconst limit = 15;\n\n// 3. Inputs\nconst inputData = await this.getInputData();\nconst embeddings = await this.getInputConnectionData('ai_embedding', 0);\nconst sparseVectorTool = await this.getInputConnectionData('ai_tool', 0);\n\n// 4. Execute\nconst query = inputData[0].json.query;\n\nconst denseVector = await embeddings.embedQuery(query);\nconst sparseVector = JSON.parse(await sparseVectorTool.invoke(query));\n\nconst response = await client.query(collectionName, {\n  prefetch: [\n    {\n      query: denseVector,\n      using: 'default',\n      limit: 100\n    },\n    {\n      query: sparseVector,\n      using: 'bm42',\n      limit: 100\n    }\n ],\n query: { fusion: 'rrf' },\n with_payload: true,\n limit,\n});\n\nconst docs = response.points.map(res => ({\n  pageContent: res.payload.content,\n  metadata: res.payload.metadata\n}));\nconst retriever = BM25Retriever.fromDocuments(docs, { k: limit });\nconst rankedDocs = await retriever.invoke(query);\nreturn rankedDocs;"
+          }
+        },
+        "inputs": {
+          "input": [
+            {
+              "type": "main",
+              "maxConnections": 1,
+              "required": true
+            },
+            {
+              "type": "ai_embedding",
+              "maxConnections": 1,
+              "required": true
+            },
+            {
+              "type": "ai_tool",
+              "maxConnections": 1,
+              "required": true
+            }
+          ]
+        },
+        "outputs": {
+          "output": [
+            {
+              "type": "main"
+            }
+          ]
+        }
+      },
+      "id": "062437fb-b0cd-4cff-b1bb-9a5aa7fff27e",
+      "name": "Qdrant with BM25 ReRank1",
+      "type": "@n8n/n8n-nodes-langchain.code",
+      "typeVersion": 1,
+      "position": [
+        -1904,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "description": "Generates TD-IDF sparse vector for query",
+        "language": "python",
+        "pythonCode": "import json\nfrom sklearn.feature_extraction.text import TfidfVectorizer\n\n# Create TF-IDF vectorizer\nvectorizer = TfidfVectorizer()\n\n# Fit and transform the texts to generate TF-IDF vectors\ntexts = [_input.item.json.query]\nX = vectorizer.fit_transform(texts)\n\n\n# Prepare sparse vector\nsparse_vector = {\n    \"indices\": X.indices.tolist(),\n    \"values\": X.data.tolist()\n}\n\n\n# Return the JSON string directly\nreturn json.dumps(sparse_vector)\n\n\n# return {\n#   \"response\": {\n#     \"indices\": X.indices.tolist(),\n#     \"values\": X.data.tolist()\n#   }\n# }"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        -1776,
+        768
+      ],
+      "id": "0d8e34d9-a645-4273-be4a-1373e75aac82",
+      "name": "Sparse Vector"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d7c91832-1033-40dd-8d2f-607f91238901",
+              "name": "query",
+              "value": "={{ $json.chatInput }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "128f683e-d728-4363-ab3d-1873041b5e35",
+      "name": "query",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        -2128,
+        544
+      ],
+      "typeVersion": 3.4
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c525d286-83fb-466a-9c53-0f52f2afa8c6",
+              "name": "query",
+              "value": "={{ $('query').item.json.query }}",
+              "type": "string"
+            },
+            {
+              "id": "b2bab9f1-6147-4ed0-9a18-4ff2c29686f8",
+              "name": "doc",
+              "value": "={{ $json.pageContent }}",
+              "type": "string"
+            },
+            {
+              "id": "bdf7bdf7-4e8c-49ef-80d5-16217d69103b",
+              "name": "metadata",
+              "value": "={{ $json.metadata }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1552,
+        544
+      ],
+      "id": "edfb4714-28b4-47ac-a1c3-d38d74d089f1",
+      "name": "set chunks",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Extract the query from the first item\nconst query = items[0].json.query;\n\n// Clean each doc string and pair with its metadata\nconst docsWithMetadata = items.map(item => {\n  let doc = item.json.doc;\n\n  // Remove actual newline characters, Unicode control characters, and backslashes\n  doc = doc\n    .replace(/[\\n\\r\\t]/g, ' ')         // Replace newlines, carriage returns, tabs with space\n    .replace(/[\\u0000-\\u001F\\u007F]/g, '') // Remove control characters\n    .replace(/\\\\/g, '')                // Remove backslashes\n\n  return {\n    doc: doc.trim(), // Optional: remove leading/trailing spaces\n    metadata: item.json.metadata\n  };\n});\n\n// Return the cleaned object\nreturn [\n  {\n    json: {\n      query,\n      docs: docsWithMetadata\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1328,
+        544
+      ],
+      "id": "f871c5fb-4c30-449c-840c-5e31d6726ee6",
+      "name": "Clean chunks"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://huggingface-rerank-fastapi-app:8001/rerank",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"{{ $json.query }}\",\n  \"docs\": [\n    {{ $json.docs.map(item => JSON.stringify(item)).join(', ') }}\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1104,
+        544
+      ],
+      "id": "20a8a624-1feb-4876-8dca-8b6343726915",
+      "name": "rerank results",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "html": "<!DOCTYPE html>\n<html>\n  <head>\n    <meta charset=\"UTF-8\" />\n    <title>Grant Results Qdrant</title>\n    <style>\n      body {\n        font-family: sans-serif;\n        background-color: #f8f9fa;\n        padding: 2rem;\n      }\n      .grant {\n        background: #fff;\n        border: 1px solid #ddd;\n        border-radius: 6px;\n        padding: 1.25rem;\n        margin-bottom: 1.5rem;\n        box-shadow: 0 1px 3px rgba(0,0,0,0.05);\n      }\n      .grant h2 {\n        margin-top: 0;\n        color: #ff6d5a;\n      }\n      .grant p {\n        margin: 0.5rem 0;\n      }\n    </style>\n  </head>\n  <body>\n    {{\n      <!-- $items().map(item => { -->\n    \n      $items().map((item, index) => {\n\n        const o = item.json;\n        const num = n => Number(n || 0) < 0 ? \"Not specified\" : `$${Number(n).toLocaleString()}`;\n        return `\n          <div class=\"grant\">\n            <!-- <h2>${o.Title}</h2> -->\n            \n            <h2>${index + 1}. ${o.Title}</h2>\n\n            <p><strong>Opportunity Number:</strong> ${o.OpportunityNumber?.trim() || \"N/A\"}</p>\n            <p><strong>Agency:</strong> ${o.Agency?.trim() || \"N/A\"}</p>\n            <p><strong>Top Agency:</strong> ${o[\"Top Agency\"] || \"N/A\"}</p>\n            <p><strong>Due Date:</strong> ${o[\"Due Date\"] || \"N/A\"}</p>\n            <p><strong>Estimated Funding:</strong> ${num(o[\"Estimated Funding\"])}</p>\n            <p><strong>Award Floor–Ceiling:</strong> ${num(o[\"Award Floor\"])} – ${num(o[\"Award Cieling\"])}</p>\n            <p><strong>Summary:</strong> ${o.Synopsis?.trim() || \"No summary available.\"}</p>\n          </div>\n        `;\n      }).join('')\n    }}\n  </body>\n</html>"
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        -432,
+        544
+      ],
+      "id": "d83013e7-67cd-4529-8faa-521bb3362b73",
+      "name": "data to html format3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.first().json.html; // Or $json.html if you're using a Set node\nconst buffer = Buffer.from(html, 'utf8');\n\nreturn [\n  {\n    binary: {\n      data: {\n        data: buffer.toString('base64'),\n        mimeType: 'text/html',\n        fileName: 'opportunity_summaries.html'\n      }\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        544
+      ],
+      "id": "035f157a-6a7d-45a3-9447-79f42cd447ff",
+      "name": "html2binary2"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/data/shared/grant_results_qdrant_{{ $('When chat message received').first().json.chatInput }}.html",
+        "dataPropertyName": "=data",
+        "options": {
+          "append": false
+        }
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        16,
+        544
+      ],
+      "id": "f0ee154c-a532-4874-8f1e-4af029621a2d",
+      "name": "write scores1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Define score threshold\nconst SCORE_THRESHOLD = 0.01;\n\n// Step 1: Get reranked results and filter by score\nconst rawItems = $('rerank results').first().json.reranked || [];\n\nconst filtered = rawItems\n  .filter(item => typeof item.score === 'number' && item.score >= SCORE_THRESHOLD)\n  .map((item, index) => ({\n    content: item.doc,\n    id: item.metadata?.id,\n    oppNum: item.metadata?.oppNum,\n    score: item.score,\n    index\n  }));\n\n// Step 2: Sort by score descending\nfiltered.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));\n\n// Step 3: Deduplicate by oppNum\nconst seen = new Set();\nconst deduped = filtered.filter(item => {\n  const key = item.oppNum;\n  if (!key) return true; // keep if missing for traceability\n  if (seen.has(key)) return false;\n  seen.add(key);\n  return true;\n});\n\n// Step 4: Return cleaned array as output items\nreturn deduped.map(item => ({ json: item }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        544
+      ],
+      "id": "1cd95c54-8270-4dfa-8eaa-32573b94eec3",
+      "name": "sort and remove redundancies"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "=grants_gov",
+          "mode": "name"
+        },
+        "returnAll": true,
+        "where": {
+          "values": [
+            {
+              "column": "ID number",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -656,
+        544
+      ],
+      "id": "12aedc72-d134-446d-bfb7-50e178d2b6d0",
+      "name": "get rows from grants2",
+      "credentials": {
+        "postgres": {
+          "id": "kkz7AYyjNyf7XdIL",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://neo4j:7474/db/neo4j/tx/commit",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\n  \"Content-Type\": \"application/json\"\n}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"statements\": [\n    {\n      \"statement\": \"MERGE (g:Grant {title: $title}) MERGE (a:Agency {name: $agency}) MERGE (t:TopAgency {name: $topAgency}) MERGE (g)-[:ISSUED_BY]->(a) MERGE (a)-[:PART_OF]->(t) RETURN g, a, t\",\n      \"parameters\": {\n        \"title\": \"{{ $json.Title }}\",\n        \"agency\": \"{{ $json.Agency }}\",\n        \"topAgency\": \"{{ $json['Top Agency'] }}\"\n      }\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -272,
+        -224
+      ],
+      "id": "d97f6e61-6fa9-487b-9e98-147f006e472e",
+      "name": "neo4j example",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "uewf5QpvDRGWSObC",
+          "name": "neo4j"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// const item = $json;\n// const invalidFields = [];\n\n// for (const [key, value] of Object.entries(item)) {\n//   const isBlankString = typeof value === 'string' && value.trim() === '';\n//   const isNullOrUndefined = value === null || value === undefined;\n\n//   if (isBlankString || isNullOrUndefined) {\n//     invalidFields.push(key);\n//   }\n// }\n\n// if (invalidFields.length > 0) {\n//   throw new Error(`Invalid fields detected: ${invalidFields.join(', ')}`);\n// }\n\n// return [{ json: item }];\n\nconst item = $json;\nconst cleaned = {};\nconst invalidFields = [];\nconst allowEmpty = ['Due Date']; // whitelist fields allowed to be empty\n\nfor (const [key, value] of Object.entries(item)) {\n  if (typeof value === 'string') {\n    // Normalize string: trim, remove line breaks, collapse whitespace\n    const normalized = value.replace(/\\s+/g, ' ').trim();\n\n    if (normalized === '' && !allowEmpty.includes(key)) {\n      invalidFields.push(key);\n    } else {\n      cleaned[key] = normalized;\n    }\n  } else if (value === null || value === undefined) {\n    if (!allowEmpty.includes(key)) {\n      invalidFields.push(key);\n    }\n  } else {\n    cleaned[key] = value;\n  }\n}\n\nif (invalidFields.length > 0) {\n  throw new Error(`Invalid fields detected: ${invalidFields.join(', ')}`);\n}\n\nreturn [{ json: cleaned }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        -240
+      ],
+      "id": "7bbe4577-3f3a-489b-8f16-801edaa9c2d9",
+      "name": "verify_data_exits"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Grants to List1": {
+      "main": [
+        [
+          {
+            "node": "Get Grant Details1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Grant Details1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "see if id exists1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Grants search1": {
+      "main": [
+        [
+          {
+            "node": "Grants to List1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "see if id exists1": {
+      "main": [
+        [
+          {
+            "node": "Insert data to grants1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert data to grants1": {
+      "main": [
+        [
+          {
+            "node": "verify_data_exits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "insert grants to db": {
+      "main": [
+        [
+          {
+            "node": "see if id exists2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Me": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to Array": {
+      "main": [
+        [
+          {
+            "node": "Scroll Points",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ID Retrieval": {
+      "main": [
+        [
+          {
+            "node": "deduplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "deduplicate": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "see if id exists2": {
+      "main": [
+        [
+          {
+            "node": "Convert to Array",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get rows from grants3": {
+      "main": [
+        [
+          {
+            "node": "get Synopsis for vector1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get Synopsis for vector1": {
+      "main": [
+        [
+          {
+            "node": "Create Chunks From Doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items2": {
+      "main": [
+        [],
+        [
+          {
+            "node": "get rows from grants3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scroll Points": {
+      "main": [
+        [
+          {
+            "node": "ID Retrieval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Chunks From Doc": {
+      "main": [
+        [
+          {
+            "node": "Chunks To List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunks To List": {
+      "main": [
+        [
+          {
+            "node": "Generate TF-IDF Sparse Vectors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate TF-IDF Sparse Vectors": {
+      "main": [
+        [
+          {
+            "node": "Get Values",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Values": {
+      "main": [
+        [
+          {
+            "node": "Call 'My Sub-Workflow grants'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'My Sub-Workflow grants'": {
+      "main": [
+        [
+          {
+            "node": "Replace Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "grants gov search": {
+      "main": [
+        [
+          {
+            "node": "AI Grants search1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Ollama2": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Qdrant with BM25 ReRank1",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant with BM25 ReRank1": {
+      "main": [
+        [
+          {
+            "node": "set chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sparse Vector": {
+      "ai_tool": [
+        [
+          {
+            "node": "Qdrant with BM25 ReRank1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "query": {
+      "main": [
+        [
+          {
+            "node": "Qdrant with BM25 ReRank1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set chunks": {
+      "main": [
+        [
+          {
+            "node": "Clean chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean chunks": {
+      "main": [
+        [
+          {
+            "node": "rerank results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "rerank results": {
+      "main": [
+        [
+          {
+            "node": "sort and remove redundancies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "data to html format3": {
+      "main": [
+        [
+          {
+            "node": "html2binary2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "html2binary2": {
+      "main": [
+        [
+          {
+            "node": "write scores1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sort and remove redundancies": {
+      "main": [
+        [
+          {
+            "node": "get rows from grants2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get rows from grants2": {
+      "main": [
+        [
+          {
+            "node": "data to html format3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "neo4j example": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "verify_data_exits": {
+      "main": [
+        [
+          {
+            "node": "neo4j example",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ba207ebd-bdad-4db2-96a5-60daa0b9f47f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "kc2WlgVTiOHAYTfI",
+  "tags": []
+}

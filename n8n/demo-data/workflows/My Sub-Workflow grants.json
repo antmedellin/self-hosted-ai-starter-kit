@@ -1,0 +1,255 @@
+{
+  "name": "My Sub-Workflow grants",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "28fe51ec-4275-4c2e-8b64-b284a39d5d7d",
+      "typeVersion": 1.1,
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        272,
+        384
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "418c9476-5896-4766-ac23-3cb3aa361173",
+      "name": "Replace me with your logic",
+      "type": "n8n-nodes-base.noOp",
+      "position": [
+        496,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{\n{\n  \"content\": $json.chunk\n}\n}}",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "title",
+                "value": "={{ $json.title }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "118876dc-feff-4bb4-b12c-9b58e56b189b",
+      "name": "Default Data Loader",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1,
+      "position": [
+        1072,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "chunkSize": 2000,
+        "options": {}
+      },
+      "id": "6216db26-b1b1-4da7-8a68-c4ff0a846433",
+      "name": "Recursive Character Text Splitter",
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text:v1.5"
+      },
+      "id": "beb27a85-0d17-4dac-99ce-6b6eef94b03e",
+      "name": "Embeddings Ollama",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
+      "typeVersion": 1,
+      "position": [
+        944,
+        432
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "code": {
+          "execute": {
+            "code": "const { randomUUID } = require('crypto') // Enable the crypto lib using env var NODE_FUNCTION_ALLOW_BUILTIN=crypto\nconst { QdrantClient } = require('@qdrant/js-client-rest');\n\n// 1. Qdrant config\nconst client = new QdrantClient({ url: 'http://qdrant:6333' });\nconst collectionName = 'grants_rag';\n\n// 2. Inputs\nconst inputData = this.getInputData();\nconst embeddings = await this.getInputConnectionData('ai_embedding', 0);\nconst documentLoader = await this.getInputConnectionData('ai_document', 0);\n\n\n\n\n// 3. Run document loader\nconst docs = await documentLoader.processAll(inputData);\n\n\n// 4. Generate points with sparse vectors\nconst points = [];\n\nfor (let i = 0; i < docs.length; i++) {\n  const chunk = docs[i].pageContent;\n  const sparse = inputData[i].json.sparse;\n\n  const id = inputData[i].json.id;\n  const oppNum = inputData[i].json.opp_num;\n\n  console.log(`Processing doc #${i}`);\n  console.log('Chunk:', chunk);\n  // console.log('Sparse:', sparse);\n  console.log('id:', id);\n  console.log('oppNum:', oppNum);\n\n  \n  // Skip if chunk is empty or sparse is null/invalid\n  if (!chunk || !chunk.trim() || !sparse || !Array.isArray(sparse.indices) || !Array.isArray(sparse.values)) {\n    continue;\n  }\n\n  const denseVector = await embeddings.embedQuery(chunk);\n\n  \n  console.log('Dense vector:', denseVector);\n  \nif (!Array.isArray(denseVector) || denseVector.length === 0) {\n  console.warn(`Invalid dense vector for doc #${i}`);\n  continue;\n}\n\nif (\n  !Array.isArray(sparse.indices) ||\n  !Array.isArray(sparse.values) ||\n  sparse.indices.length !== sparse.values.length\n) {\n  console.warn(`Invalid sparse vector for doc #${i}`);\n  continue;\n}\n\n  \n  \n  points.push({\n    id: randomUUID(),\n    vector: {\n      default: denseVector,\n      bm42: {\n        indices: sparse.indices,\n        values: sparse.values\n      }\n    },\n    // payload: {\n    //   content: chunk,\n    //   metadata: docs[i].metadata, \n    //     id, \n    //     oppNum\n    // }\n    payload: {\n      content: chunk,\n      metadata: {\n        ...docs[i].metadata,\n        id,\n        oppNum\n      }\n    }\n\n  });\n}\n\n\n// 5. Upsert only if there are valid points\nif (points.length > 0) {\n  const res = await client.upsert(collectionName, { points });\n  return res;\n} else {\n  return { message: \"No valid chunks to upsert.\" };\n}\n\n\n\n"
+          }
+        },
+        "inputs": {
+          "input": [
+            {
+              "type": "main",
+              "maxConnections": 1,
+              "required": true
+            },
+            {
+              "type": "ai_embedding",
+              "maxConnections": 1,
+              "required": true
+            },
+            {
+              "type": "ai_document",
+              "maxConnections": 1,
+              "required": true
+            }
+          ]
+        },
+        "outputs": {
+          "output": [
+            {
+              "type": "main"
+            }
+          ]
+        }
+      },
+      "id": "8ff8dc76-9aac-4376-904f-eb03a5d959aa",
+      "name": "Insert Documents with Sparse Vectors",
+      "type": "@n8n/n8n-nodes-langchain.code",
+      "typeVersion": 1,
+      "position": [
+        976,
+        208
+      ]
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "name": "Replace Me",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        384
+      ],
+      "id": "89aaa8b6-1f13-4b69-b7c6-49446ed7b3cc"
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        720,
+        384
+      ],
+      "id": "a528d79d-d132-4528-874a-bd92d232f173",
+      "name": "Loop Over Items"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Replace me with your logic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Insert Documents with Sparse Vectors",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recursive Character Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Ollama": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Insert Documents with Sparse Vectors",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Documents with Sparse Vectors": {
+      "main": [
+        [
+          {
+            "node": "Replace Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Me": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Insert Documents with Sparse Vectors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace me with your logic": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "b72f4a4e-a7f2-4dd3-9cb7-f0fa17ae6db7",
+  "meta": {
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "KexnP9y8YNrakX4E",
+  "tags": []
+}
