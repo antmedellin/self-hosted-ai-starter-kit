@@ -14,20 +14,6 @@
     },
     {
       "parameters": {
-        "url": "https://bwt.cbp.gov/api/bwtRss/rssbyportnum/HTML/COV/230502",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        -1056,
-        304
-      ],
-      "id": "a850d471-9756-4ab6-9eba-f9f8dbd5c00e",
-      "name": "HTTP Request"
-    },
-    {
-      "parameters": {
         "dataPropertyName": "=xml",
         "options": {}
       },
@@ -55,20 +41,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json.rss.channel.item;\n\n\nconst rawPubDate = $input.first().json.rss.channel.pubDate;\n// Remove day of week (e.g., \"Fri, \") using regex or split\nconst pubDate = rawPubDate.replace(/^\\w{3},\\s*/, '');\n\nconst location = item.title;\nconst cross_type = item.description.h4.b;\n\n// Extract raw description text\nconst descText = item.description._;\n\n// Regex helpers\nconst genMatch = descText.match(/General Lanes:.*?(\\d+)\\s+min delay\\s+(\\d+)\\s+lane\\(s\\)/);\nconst fastMatch = descText.match(/Fast Lanes:.*?(\\d+)\\s+min delay\\s+(\\d+)\\s+lane\\(s\\)/);\n\nconst genLaneDelay = genMatch ? genMatch[1] : null;\nconst genLaneNum = genMatch ? genMatch[2] : null;\n\nconst fastLaneDelay = fastMatch ? fastMatch[1] : null;\nconst fastLaneNum = fastMatch ? fastMatch[2] : null;\n\nreturn [\n  {\n    json: {\n      pubDate,\n      location,\n      cross_type,\n      genLaneDelay,\n      genLaneNum,\n      fastLaneDelay,\n      fastLaneNum\n    }\n  }\n];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -384,
-        304
-      ],
-      "id": "55d7cd6d-7b7b-40a0-a8dd-194f8a824549",
-      "name": "extract_fields"
-    },
-    {
-      "parameters": {
-        "jsCode": "\nconst header = [\n  \"Publish Date and Time\",\n  \"Crossing Location\",\n  \"Crossing Type\",\n  \"General Lane Delay\",\n  \"General Lane Number of Lanes\",\n  \"Fast Lane Delay\",\n  \"Fast Lane Number of Lanes\"\n].map(h => `\"${h}\"`).join(',');\n\n\nconst rows = $('extract_fields').all().map(item => {\n  const {\n    pubDate,\n    location,\n    cross_type,\n    genLaneDelay,\n    genLaneNum,\n    fastLaneDelay,\n    fastLaneNum\n  } = item.json;\n\n  // const escape = str => `\"${String(str).replace(/\"/g, '\"\"').trim()}\"`;\n\n  const escape = str => String(str).replace(/\"/g, '\"\"').trim();\n\n  return [\n    escape(pubDate),\n    escape(location),\n    escape(cross_type),\n    escape(genLaneDelay),\n    escape(genLaneNum),\n    escape(fastLaneDelay),\n    escape(fastLaneNum)\n  ].join(',');\n});\n\n// return [{ json: { csvRow: [header, ...rows].join('\\n') } }];\n// return [{ json: { csvRow:  rows.join('\\n') + '\\n' } }];\n\n\nconst csvContent = [header, ...rows].join('\\n')+ '\\n';\nconst buffer = Buffer.from(csvContent, 'utf8');\n\nreturn [\n  {\n    binary: {\n      data: {\n        data: buffer.toString('base64'),\n        mimeType: 'text/csv',\n        fileName: 'border_crossing_data.csv'\n      }\n    }\n  }\n];\n"
+        "jsCode": "\nconst header = [\n  \"Publish Date and Time\",\n  \"Crossing Location\",\n  \"Crossing Type\",\n  \"General Lane Delay\",\n  \"General Lane Number of Lanes\",\n  \"Fast Lane Delay\",\n  \"Fast Lane Number of Lanes\"\n].map(h => `\"${h}\"`).join(',');\n\n\nconst rows = $('extract_fields_multiple').all().map(item => {\n  const {\n    pubDate,\n    location,\n    cross_type,\n    genLaneDelay,\n    genLaneNum,\n    fastLaneDelay,\n    fastLaneNum\n  } = item.json;\n\n  // const escape = str => `\"${String(str).replace(/\"/g, '\"\"').trim()}\"`;\n\n  const escape = str => String(str).replace(/\"/g, '\"\"').trim();\n\n  return [\n    escape(pubDate),\n    escape(location),\n    escape(cross_type),\n    escape(genLaneDelay),\n    escape(genLaneNum),\n    escape(fastLaneDelay),\n    escape(fastLaneNum)\n  ].join(',');\n});\n\n// return [{ json: { csvRow: [header, ...rows].join('\\n') } }];\n// return [{ json: { csvRow:  rows.join('\\n') + '\\n' } }];\n\n\nconst csvContent = [header, ...rows].join('\\n')+ '\\n';\nconst buffer = Buffer.from(csvContent, 'utf8');\n\nreturn [\n  {\n    binary: {\n      data: {\n        data: buffer.toString('base64'),\n        mimeType: 'text/csv',\n        fileName: 'border_crossing_data.csv'\n      }\n    }\n  }\n];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -150,7 +123,7 @@
             {
               "id": "77c07261-37f4-408b-b451-4dd0b6808cb2",
               "name": "outputFileName",
-              "value": "/data/shared/data/waitTimes/test.csv",
+              "value": "/data/shared/waitTimes.csv",
               "type": "string"
             }
           ]
@@ -181,7 +154,7 @@
     },
     {
       "parameters": {
-        "jsCode": "\nconst rows = $('extract_fields').all().map(item => {\n  const {\n    pubDate,\n    location,\n    cross_type,\n    genLaneDelay,\n    genLaneNum,\n    fastLaneDelay,\n    fastLaneNum\n  } = item.json;\n\n  const escape = str => `\"${String(str).replace(/\"/g, '\"\"').trim()}\"`;\n\n  return [\n    escape(pubDate),\n    escape(location),\n    escape(cross_type),\n    escape(genLaneDelay),\n    escape(genLaneNum),\n    escape(fastLaneDelay),\n    escape(fastLaneNum)\n  ].join(',');\n});\n\n// return [{ json: { csvRow: [rows].join('\\n') } }];\n\n\nreturn [{ json: { csvRow:  rows.join('\\n') } }];\n\n"
+        "jsCode": "\nconst rows = $('extract_fields_multiple').all().map(item => {\n  const {\n    pubDate,\n    location,\n    cross_type,\n    genLaneDelay,\n    genLaneNum,\n    fastLaneDelay,\n    fastLaneNum\n  } = item.json;\n\n  const escape = str => `\"${String(str).replace(/\"/g, '\"\"').trim()}\"`;\n\n  return [\n    escape(pubDate),\n    escape(location),\n    escape(cross_type),\n    escape(genLaneDelay),\n    escape(genLaneNum),\n    escape(fastLaneDelay),\n    escape(fastLaneNum)\n  ].join(',');\n});\n\n// return [{ json: { csvRow: [rows].join('\\n') } }];\n\n\nreturn [{ json: { csvRow:  rows.join('\\n') } }];\n\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -211,6 +184,62 @@
       ],
       "id": "8ec29d1c-8175-4c4a-8a94-c5ee97bb39ed",
       "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://bwt.cbp.gov/api/bwtRss/rssbyportnum/HTML/COV/230502",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1056,
+        560
+      ],
+      "id": "f16681d7-f5a2-447e-b4d5-da69602c55f9",
+      "name": "Get Wait Time Single",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json.rss.channel.item;\n\n\nconst rawPubDate = $input.first().json.rss.channel.pubDate;\n// Remove day of week (e.g., \"Fri, \") using regex or split\nconst pubDate = rawPubDate.replace(/^\\w{3},\\s*/, '');\n\nconst location = item.title;\nconst cross_type = item.description.h4.b;\n\n// Extract raw description text\nconst descText = item.description._;\n\n// Regex helpers\nconst genMatch = descText.match(/General Lanes:.*?(\\d+)\\s+min delay\\s+(\\d+)\\s+lane\\(s\\)/);\nconst fastMatch = descText.match(/Fast Lanes:.*?(\\d+)\\s+min delay\\s+(\\d+)\\s+lane\\(s\\)/);\n\nconst genLaneDelay = genMatch ? genMatch[1] : null;\nconst genLaneNum = genMatch ? genMatch[2] : null;\n\nconst fastLaneDelay = fastMatch ? fastMatch[1] : null;\nconst fastLaneNum = fastMatch ? fastMatch[2] : null;\n\nreturn [\n  {\n    json: {\n      pubDate,\n      location,\n      cross_type,\n      genLaneDelay,\n      genLaneNum,\n      fastLaneDelay,\n      fastLaneNum\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        560
+      ],
+      "id": "62bf99db-b75f-4f69-acdf-e9f0a943f98f",
+      "name": "extract_fields_single",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "url": "https://bwt.cbp.gov/api/bwtRss/HTML/10,52,1,76,186,44,43,15,12,69,53,11,28,34,20,6,7,46,32,23,25,38,22,17,68,16,35,36,47,67,155,27,65,48,50,21,93,58,5,8,26,40,180,39,41,148,72,29,9,3,4,56/-1/-1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1056,
+        304
+      ],
+      "id": "a850d471-9756-4ab6-9eba-f9f8dbd5c00e",
+      "name": "Get wait time all"
+    },
+    {
+      "parameters": {
+        "jsCode": "// const item = $input.first().json.rss.channel.item;\n\n\n// const rawPubDate = $input.first().json.rss.channel.pubDate;\n// // Remove day of week (e.g., \"Fri, \") using regex or split\n// const pubDate = rawPubDate.replace(/^\\w{3},\\s*/, '');\n\n// const location = item.title;\n// const cross_type = item.description.h4.b;\n\n// // Extract raw description text\n// const descText = item.description._;\n\n// // Regex helpers\n// const genMatch = descText.match(/General Lanes:.*?(\\d+)\\s+min delay\\s+(\\d+)\\s+lane\\(s\\)/);\n// const fastMatch = descText.match(/Fast Lanes:.*?(\\d+)\\s+min delay\\s+(\\d+)\\s+lane\\(s\\)/);\n\n// const genLaneDelay = genMatch ? genMatch[1] : null;\n// const genLaneNum = genMatch ? genMatch[2] : null;\n\n// const fastLaneDelay = fastMatch ? fastMatch[1] : null;\n// const fastLaneNum = fastMatch ? fastMatch[2] : null;\n\n// return [\n//   {\n//     json: {\n//       pubDate,\n//       location,\n//       cross_type,\n//       genLaneDelay,\n//       genLaneNum,\n//       fastLaneDelay,\n//       fastLaneNum\n//     }\n//   }\n// ];\n\nconst items = $input.first().json.rss.channel.item;\nconst rawPubDate = $input.first().json.rss.channel.pubDate;\nconst pubDate = rawPubDate.replace(/^\\w{3},\\s*/, '');\n\nconst results = items.map(item => {\n  const location = item.title;\n  const cross_type = item.description.h4?.b || null;\n\n  const descText = item.description._;\n\n  const genMatch = descText.match(/General Lanes:.*?(\\d+)\\s+min delay\\s+(\\d+)\\s+lane\\(s\\)/);\n  const fastMatch = descText.match(/Fast Lanes:.*?(\\d+)\\s+min delay\\s+(\\d+)\\s+lane\\(s\\)/);\n\n  const genLaneDelay = genMatch ? genMatch[1] : null;\n  const genLaneNum = genMatch ? genMatch[2] : null;\n\n  const fastLaneDelay = fastMatch ? fastMatch[1] : null;\n  const fastLaneNum = fastMatch ? fastMatch[2] : null;\n\n  return {\n    json: {\n      pubDate,\n      location,\n      cross_type,\n      genLaneDelay,\n      genLaneNum,\n      fastLaneDelay,\n      fastLaneNum\n    }\n  };\n});\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -384,
+        304
+      ],
+      "id": "55d7cd6d-7b7b-40a0-a8dd-194f8a824549",
+      "name": "extract_fields_multiple"
     }
   ],
   "pinData": {},
@@ -220,17 +249,6 @@
         [
           {
             "node": "set filename",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP Request": {
-      "main": [
-        [
-          {
-            "node": "clean xml",
             "type": "main",
             "index": 0
           }
@@ -252,18 +270,7 @@
       "main": [
         [
           {
-            "node": "extract_fields",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "extract_fields": {
-      "main": [
-        [
-          {
-            "node": "Read Files from Disk1",
+            "node": "extract_fields_multiple",
             "type": "main",
             "index": 0
           }
@@ -314,7 +321,7 @@
       "main": [
         [
           {
-            "node": "HTTP Request",
+            "node": "Get wait time all",
             "type": "main",
             "index": 0
           }
@@ -342,13 +349,46 @@
           }
         ]
       ]
+    },
+    "Get wait time all": {
+      "main": [
+        [
+          {
+            "node": "clean xml",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "extract_fields_multiple": {
+      "main": [
+        [
+          {
+            "node": "Read Files from Disk1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Wait Time Single": {
+      "main": [
+        [
+          {
+            "node": "extract_fields_single",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "active": true,
+  "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "c79ef2ad-2103-4c1a-8630-ba77159dadda",
+  "versionId": "b07fcdb0-59b3-4ba8-a2f5-9bec225f2b93",
   "meta": {
     "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
   },
