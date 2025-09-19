@@ -23,6 +23,8 @@
     },
     {
       "parameters": {
+        "public": true,
+        "initialMessages": "Hi there! 👋\nMy name is Ref-AI. How can I assist you today in becoming a better Latino leader?",
         "options": {}
       },
       "id": "02608d62-2afc-4b13-82a5-2ef7495db1ca",
@@ -37,7 +39,7 @@
     },
     {
       "parameters": {
-        "model": "qwen3:0.6b",
+        "model": "qwen3:latest",
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
@@ -235,7 +237,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const reranked = $('rerank results').first().json.reranked;\nlet answer, citationIndexes;\n\n// Try to get the answer and citations from the normal output\ntry {\n  answer = $input.first().json.output.answer;\n  citationIndexes = $input.first().json.output.citations;\n} catch (e) {\n  // Fallback: try to extract from error message\n  const errorText = $input.first().json.error || '';\n  const jsonMatch = errorText.match(/```json\\s*([\\s\\S]*?)\\s*```/);\n\n  if (jsonMatch) {\n    try {\n      const parsed = JSON.parse(jsonMatch[1]);\n      answer = parsed.answer || parsed.properties?.answer;\n      citationIndexes = parsed.citations || parsed.properties?.citations;\n    } catch (parseError) {\n      throw new Error(\"Failed to parse fallback JSON: \" + parseError.message);\n    }\n  } else {\n    throw new Error(\"No valid answer or citations found.\");\n  }\n}\n\n// Format citation details\nconst citationDetails = citationIndexes.map(index => {\n  const item = reranked[index];\n  return {\n    index,\n    title: item?.metadata?.title || \"Untitled\",\n    // source: item?.metadata?.source || \"Unknown\"\n  };\n});\n\nreturn {\n  answer,\n  citations: citationDetails\n};\n\n\n\n// const reranked = $('rerank results').first().json.reranked;\n// const answer = $input.first().json.output.answer;\n// const citationIndexes = $input.first().json.output.citations;\n\n// const citationDetails = citationIndexes.map(index => {\n//   const item = reranked[index];\n//   return {\n//     index,\n//     title: item.metadata?.title || \"Untitled\",\n//     // source: item.metadata?.source || \"Unknown\"\n//   };\n// });\n\n// return {\n//   answer,\n//   citations: citationDetails\n// };\n"
+        "jsCode": "const reranked = $('rerank results').first().json.reranked;\nlet answer, citationIndexes;\n\ntry {\n  // Primary path\n  answer = $input.first().json.output.answer;\n  citationIndexes = $input.first().json.output.citations;\n} catch (e) {\n  // Fallback path\n  const errorText = $input.first().json.error || '';\n\n  // Extract JSON block after </think>\\n\\n\n  const jsonStart = errorText.indexOf('</think>');\n  if (jsonStart === -1) throw new Error(\"Missing </think> marker in error text.\");\n\n  // Slice and clean\n  let rawJson = errorText.slice(jsonStart + 8).trim();\n\n  // Remove trailing characters like closing quotes or punctuation\n  rawJson = rawJson.replace(/^[^{}]*|[^{}]*$/g, '');\n\n  try {\n    const parsed = JSON.parse(rawJson);\n    answer = parsed.answer || parsed.properties?.answer;\n    citationIndexes = parsed.citations || parsed.properties?.citations;\n  } catch (parseError) {\n    throw new Error(\"Failed to parse fallback JSON: \" + parseError.message);\n  }\n}\n\n// Format citation details\nconst citationDetails = (citationIndexes || []).map(index => {\n  const item = reranked[index];\n  return {\n    index,\n    title: item?.metadata?.title || \"Untitled\"\n  };\n});\n\nreturn {\n  json: {\n    answer,\n    citations: citationDetails\n  }\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -349,6 +351,19 @@
       ],
       "id": "3de12c5e-a2c3-4410-99fb-54cbe8ed81f2",
       "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\n\nconst response = $input.first().json.results.results[0].memory;\nconst citations = $('format result').first().json.citations;\n\n// Build citation table\nconst citationTable = citations.map(c => `• [${c.index}] ${c.title}`).join('\\n');\n\nreturn {\n  json: {\n    Response: `🗣️ Response:${response}\n    \n    📚 Citations:\\n${citationTable}`\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        288
+      ],
+      "id": "3b8fdbdd-d3d8-49d5-8d53-b08118144852",
+      "name": "clean for chatbox"
     }
   ],
   "pinData": {},
@@ -507,13 +522,24 @@
           }
         ]
       ]
+    },
+    "mem0: add": {
+      "main": [
+        [
+          {
+            "node": "clean for chatbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "889576ed-4096-4dfb-abe8-f495b42cb14f",
+  "versionId": "e0f18bc9-57ea-4d23-8b79-b67184fa615e",
   "meta": {
     "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
   },

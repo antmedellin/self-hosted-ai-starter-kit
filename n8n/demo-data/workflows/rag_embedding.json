@@ -9,7 +9,7 @@
       "typeVersion": 1,
       "position": [
         -3200,
-        160
+        64
       ]
     },
     {
@@ -22,7 +22,7 @@
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1,
       "position": [
-        -1632,
+        -1408,
         80
       ]
     },
@@ -36,8 +36,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1408,
-        80
+        -1200,
+        32
       ]
     },
     {
@@ -67,8 +67,8 @@
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
       "position": [
-        -1184,
-        80
+        -960,
+        -16
       ]
     },
     {
@@ -82,8 +82,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -960,
-        80
+        -736,
+        -16
       ],
       "alwaysOutputData": false
     },
@@ -118,8 +118,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -736,
-        80
+        -512,
+        -16
       ]
     },
     {
@@ -129,8 +129,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -512,
-        80
+        -288,
+        -16
       ],
       "id": "024d614a-457a-429c-9803-362390d9a188",
       "name": "deduplicate"
@@ -143,20 +143,20 @@
       "typeVersion": 1,
       "position": [
         -2752,
-        160
+        64
       ],
       "id": "9e7ea304-9d9d-4c49-afa9-598d6b2f7f53",
       "name": "Execute Command"
     },
     {
       "parameters": {
-        "jsCode": "const output = $json.stdout || \"\";\nconst files = output.split(\"\\n\").filter(f => f.endsWith(\".pdf\"));\n\nreturn files.map(file => ({\n  json: {\n    fileName: file,\n    filePath: `${$('directory_path').first().json.directory_path}/${file}`\n  }\n}));\n"
+        "jsCode": "const output = $json.stdout || \"\";\nconst files = output.split(\"\\n\").filter(f => f.endsWith(\".pdf\")|| f.endsWith(\".txt\"));\n\nreturn files.map(file => ({\n  json: {\n    fileName: file,\n    filePath: `${$('directory_path').first().json.directory_path}/${file}`\n  }\n}));\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         -2528,
-        160
+        64
       ],
       "id": "a0f6f2e7-cbf4-4b3c-8bb2-c3f9ebdf4a4b",
       "name": "files_to_list"
@@ -169,7 +169,7 @@
       "typeVersion": 3,
       "position": [
         -2304,
-        160
+        64
       ],
       "id": "aa86b6db-b202-4732-9d01-53e2c62b1510",
       "name": "Loop Over Items1"
@@ -192,7 +192,7 @@
       "typeVersion": 3.4,
       "position": [
         -2976,
-        160
+        64
       ],
       "id": "1231a9e9-452e-477f-aba8-22efa8fe9fcc",
       "name": "directory_path"
@@ -205,7 +205,7 @@
       "typeVersion": 2,
       "position": [
         -2080,
-        80
+        -16
       ],
       "id": "1a0e7878-be9f-4a32-be4a-b83d5ca0b8f4",
       "name": "fix path"
@@ -219,7 +219,7 @@
       "typeVersion": 1,
       "position": [
         -1856,
-        80
+        -16
       ],
       "id": "106a93a8-4404-4bf6-bfec-ca4373cafa1b",
       "name": "Get pdf"
@@ -245,11 +245,101 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        -288,
-        160
+        -64,
+        64
       ],
       "id": "6ea96f5e-5748-4bc1-88ac-510b0e7db467",
       "name": "Execute Workflow"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.fileName.split('.').pop().toLowerCase() }}",
+                    "rightValue": "txt",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "31fa2be4-d8fb-4a0e-9380-319364b651bc"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "b5e0ae22-e79e-4aaf-90b7-5b9810a1c4b5",
+                    "leftValue": "={{ $json.fileName.split('.').pop().toLowerCase() }}",
+                    "rightValue": "pdf",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -1632,
+        -16
+      ],
+      "id": "418a4e4a-e64e-46e8-b9e7-1c2a09b26a3f",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "id": "af3089aa-0007-4cad-8312-ca250b210fff",
+      "name": "Extract from File1",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -1408,
+        -112
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const chunks = [];\nconst chunkSize = 1000;\nconst chunkOverlap = 200;\nconst text =$('Extract from File1').item.json.data.replace(/\\n/, '');\n\nfor (let i=0,j=Math.round(text.length/chunkSize)+1;i<j;i++) {\n  chunks.push(\n    text.substr(\n      Math.max(0,(i * chunkSize)-chunkOverlap),\n      chunkSize\n    )\n  );\n}\n\nreturn { chunks };"
+      },
+      "id": "206a3891-3b60-40e0-854f-419516f5e4d6",
+      "name": "Create Chunks From Doc1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1168,
+        -112
+      ]
     }
   ],
   "pinData": {},
@@ -391,7 +481,7 @@
       "main": [
         [
           {
-            "node": "Extract from File",
+            "node": "Switch",
             "type": "main",
             "index": 0
           }
@@ -408,13 +498,53 @@
           }
         ]
       ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Extract from File1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File1": {
+      "main": [
+        [
+          {
+            "node": "Create Chunks From Doc1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Chunks From Doc1": {
+      "main": [
+        [
+          {
+            "node": "Chunks To List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "1fec53a4-429e-4ee8-90fa-a72c8ec4d666",
+  "versionId": "7b728c0f-d73d-413f-a3b7-382d2c78dba6",
   "meta": {
     "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
   },
