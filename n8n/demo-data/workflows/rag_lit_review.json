@@ -1,0 +1,969 @@
+{
+  "name": "rag_lit_review",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1216,
+        296
+      ],
+      "id": "ffff6765-114a-41df-9553-6ae4654fa6e0",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "code": {
+          "execute": {
+            "code": "const { QdrantClient } = require('@qdrant/js-client-rest');\n\nconst client = new QdrantClient({ url: 'http://qdrant:6333' });\nconst collectionName = 'hybrid_rag';\n\n// Query all points (you can adjust the limit if needed)\nconst response = await client.scroll(collectionName, {\n  with_payload: true,\n  limit: 1000 // adjust as needed\n});\n\n// Extract titles from metadata\nconst titles = response.points\n  .map(point => point.payload?.metadata?.title)\n  .filter(title => title !== undefined);\n\n// Deduplicate using a Set\nconst uniqueTitles = [...new Set(titles)];\n\n// return uniqueTitles.map(title => ({ json: { title } }));\n\n\n\nconst inputData = await this.getInputData();\nconst query = inputData[0].json.query;\n\n\nreturn uniqueTitles.map(title => ({\n  json: {\n    title,\n    query\n  }\n}));\n"
+          }
+        },
+        "inputs": {
+          "input": [
+            {
+              "type": "main",
+              "maxConnections": 1,
+              "required": true
+            },
+            {
+              "type": "ai_embedding",
+              "maxConnections": 1,
+              "required": true
+            },
+            {
+              "type": "ai_tool",
+              "maxConnections": 1,
+              "required": true
+            }
+          ]
+        },
+        "outputs": {
+          "output": [
+            {
+              "type": "main"
+            }
+          ]
+        }
+      },
+      "id": "e1e6febd-3cfd-452b-898d-e518aaaa0054",
+      "name": "get title list",
+      "type": "@n8n/n8n-nodes-langchain.code",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        296
+      ]
+    },
+    {
+      "parameters": {
+        "code": {
+          "execute": {
+            "code": "const { QdrantClient } = require('@qdrant/js-client-rest');\n\nconst client = new QdrantClient({ url: 'http://qdrant:6333' });\nconst collectionName = 'hybrid_rag';\n\nconst inputData = await this.getInputData();\nconst title = inputData[0].json.title;\nconst query = inputData[0].json.query;\n\nconst response = await client.scroll(collectionName, {\n  with_payload: true,\n  limit: 5,\n  filter: {\n    must: [\n      {\n        key: 'metadata.title',\n        match: { value: title }\n      }\n    ]\n  }\n});\n\nconst results = response.points.map(doc => ({\n  title,\n  query,\n  content: doc.payload?.content,\n  metadata: doc.payload?.metadata\n}));\n\nreturn results.map(doc => ({ json: doc }));\n"
+          }
+        },
+        "inputs": {
+          "input": [
+            {
+              "type": "main",
+              "maxConnections": 1,
+              "required": true
+            },
+            {
+              "type": "ai_embedding",
+              "maxConnections": 1,
+              "required": true
+            },
+            {
+              "type": "ai_tool",
+              "maxConnections": 1,
+              "required": true
+            }
+          ]
+        },
+        "outputs": {
+          "output": [
+            {
+              "type": "main"
+            }
+          ]
+        }
+      },
+      "id": "24831cfc-1a43-4432-ae9e-ff823b4dff35",
+      "name": "query by title",
+      "type": "@n8n/n8n-nodes-langchain.code",
+      "typeVersion": 1,
+      "position": [
+        704,
+        296
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        480,
+        296
+      ],
+      "id": "661001aa-cf47-49a9-aeb0-23baa98193ae",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "name": "Replace Me",
+      "typeVersion": 1,
+      "position": [
+        3424,
+        392
+      ],
+      "id": "debb0a1b-f5a2-4fa9-80a3-3aa1e677751e"
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text:v1.5"
+      },
+      "id": "d1bf302d-3568-4548-8422-55643338a91f",
+      "name": "Embeddings Ollama2",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
+      "typeVersion": 1,
+      "position": [
+        -88,
+        520
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "qTx8lIQ0LfpDgB7C",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "Generates TD-IDF sparse vector for query",
+        "language": "python",
+        "pythonCode": "import json\nfrom sklearn.feature_extraction.text import TfidfVectorizer\n\n# Create TF-IDF vectorizer\nvectorizer = TfidfVectorizer()\n\n# Fit and transform the texts to generate TF-IDF vectors\ntexts = [_input.item.json.query]\nX = vectorizer.fit_transform(texts)\n\n\n# Prepare sparse vector\nsparse_vector = {\n    \"indices\": X.indices.tolist(),\n    \"values\": X.data.tolist()\n}\n\n\n# Return the JSON string directly\nreturn json.dumps(sparse_vector)\n\n\n# return {\n#   \"response\": {\n#     \"indices\": X.indices.tolist(),\n#     \"values\": X.data.tolist()\n#   }\n# }"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        40,
+        520
+      ],
+      "id": "e856963f-8004-414a-a7e1-2899540ae961",
+      "name": "Sparse Vector"
+    },
+    {
+      "parameters": {
+        "text": "=\n{{ $json.docs.map((item, index) => `${index + 1}. [${item.title || item.metadata?.title || 'Untitled'}] ${item.content}`).join('\\n') }}\n\n\nQuestion: {{ $('query by title').first().json.query }}\nHelpful Answer:",
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"answer\": { \"type\": \"string\" }\n  },\n  \"required\": [\"answer\"],\n  \"additionalProperties\": false\n}\n",
+        "options": {
+          "systemPromptTemplate": "=Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know—do not attempt to fabricate an answer. Don't try to make up an answer.\n\n\nImportant:\n- Use the provided context to answer the question.\n- Do not include citations or references.\n- Your output must be a JSON object that adheres to the schema.\n"
+        }
+      },
+      "id": "ad32fdf5-3dbf-46ce-b26a-62ac45e04fe3",
+      "name": "Answer the query based on chunks",
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "position": [
+        1952,
+        296
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c525d286-83fb-466a-9c53-0f52f2afa8c6",
+              "name": "query",
+              "value": "={{ $json.query }}",
+              "type": "string"
+            },
+            {
+              "id": "b2bab9f1-6147-4ed0-9a18-4ff2c29686f8",
+              "name": "doc",
+              "value": "={{ $json.content }}",
+              "type": "string"
+            },
+            {
+              "id": "bdf7bdf7-4e8c-49ef-80d5-16217d69103b",
+              "name": "metadata",
+              "value": "={{ $json.metadata }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1056,
+        296
+      ],
+      "id": "4612cbb0-369e-4b53-9d52-0e9c443fb961",
+      "name": "set chunks",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Extract the query from the first item\nconst query = items[0].json.query;\n\n// Clean each doc string and pair with its metadata\nconst docsWithMetadata = items.map(item => {\n  let doc = item.json.doc;\n\n  // Remove actual newline characters, Unicode control characters, and backslashes\n  doc = doc\n    .replace(/[\\n\\r\\t]/g, ' ')         // Replace newlines, carriage returns, tabs with space\n    .replace(/[\\u0000-\\u001F\\u007F]/g, '') // Remove control characters\n    .replace(/\\\\/g, '')                // Remove backslashes\n\n  return {\n    doc: doc.trim(), // Optional: remove leading/trailing spaces\n    metadata: item.json.metadata\n  };\n});\n\n// Return the cleaned object\nreturn [\n  {\n    json: {\n      query,\n      docs: docsWithMetadata\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        296
+      ],
+      "id": "1bf299fb-46c2-40b4-ad9e-ec2f865e52cc",
+      "name": "Clean chunks"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://huggingface-rerank-fastapi-app:8001/rerank",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"{{ $json.query }}\",\n  \"docs\": [\n    {{ $json.docs.map(item => JSON.stringify(item)).join(', ') }}\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1504,
+        296
+      ],
+      "id": "af655b84-49f9-4afa-8675-db2ff99d7618",
+      "name": "rerank results",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "model": "qwen3:latest",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        2024,
+        520
+      ],
+      "id": "62292d69-b673-4e41-97e1-ccab1393049a",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "qTx8lIQ0LfpDgB7C",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Define score threshold for RAG reranked results\nconst SCORE_THRESHOLD_RAG = 0.01;\n\n// Get reranked results from the rerank node\nconst reranked = ($('rerank results').first().json.reranked || [])\n  .filter(item => item.score >= SCORE_THRESHOLD_RAG)\n  .map((item, index) => ({\n    content: item.doc,\n    title: item.metadata?.title || `Document ${index + 1}`,\n    score: item.score,\n    index,\n    inputData: 'rerank'\n  }));\n\n// Return filtered and formatted results\nreturn [\n  {\n    json: {\n      docs: reranked,\n      query: $('query by title').first().json.query\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        296
+      ],
+      "id": "8d97868d-2dbb-42dd-8a17-fdd01fa8f807",
+      "name": "format for rag"
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $json.question_file }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        -768,
+        304
+      ],
+      "id": "a291f978-8848-4716-aab3-cb1e5803eefb",
+      "name": "Read Files from Disk1",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -544,
+        296
+      ],
+      "id": "085bf1b5-3fe8-4eeb-9240-216ccccb53e1",
+      "name": "Extract from File",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const csvContent = items[0].json.data;\nconst lines = csvContent.split(/\\r?\\n/).filter(line => line.trim() !== '');\n\nconst paperTitle = lines[0];\nconst questions = lines.slice(1);\n\nreturn [\n  {\n    json: {\n      paperTitle,\n      questions: questions.map(q => ({ question: q }))\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        296
+      ],
+      "id": "d795a44a-697f-435c-98c9-16f68c583765",
+      "name": "split to questions"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst titles =  $input.all().map(item => item.json.title);\n\n// items[0].json.titles; // array of titles\n\n\nconst questions = $('split to questions').first().json.questions;\n\nconst combinations = [];\n\nfor (const title of titles) {\n  for (const q of questions) {\n    combinations.push({\n      json: {\n        title,\n        query: q.question\n      }\n    });\n  }\n}\n\nreturn combinations;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        296
+      ],
+      "id": "1b1e2e59-4457-4162-9fa2-e59b00775cc1",
+      "name": "combine title and questions"
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text:v1.5"
+      },
+      "id": "8f02c6cb-53b0-4d41-ad4a-9c2868cded28",
+      "name": "Embeddings Ollama",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
+      "typeVersion": 1,
+      "position": [
+        712,
+        520
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "qTx8lIQ0LfpDgB7C",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "Generates TD-IDF sparse vector for query",
+        "language": "python",
+        "pythonCode": "import json\nfrom sklearn.feature_extraction.text import TfidfVectorizer\n\n# Create TF-IDF vectorizer\nvectorizer = TfidfVectorizer()\n\n# Fit and transform the texts to generate TF-IDF vectors\ntexts = [_input.item.json.query]\nX = vectorizer.fit_transform(texts)\n\n\n# Prepare sparse vector\nsparse_vector = {\n    \"indices\": X.indices.tolist(),\n    \"values\": X.data.tolist()\n}\n\n\n# Return the JSON string directly\nreturn json.dumps(sparse_vector)\n\n\n# return {\n#   \"response\": {\n#     \"indices\": X.indices.tolist(),\n#     \"values\": X.data.tolist()\n#   }\n# }"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        840,
+        520
+      ],
+      "id": "5ca98a90-0025-45b5-8807-2916ef88d3a9",
+      "name": "Sparse Vector1"
+    },
+    {
+      "parameters": {
+        "jsCode": "let rawText;\n\nif (items[0].json.error) {\n  rawText = items[0].json.error;\n\n  // Match the first valid JSON object using a stricter regex\n  const match = rawText.match(/{\\s*\"answer\"\\s*:\\s*\"[^\"]*\"\\s*}/);\n\n  if (!match) {\n    // Instead of throwing an error, return a fallback response\n    return [{ json: { answer: \"answer not found\" } }];\n  }\n\n  const jsonText = match[0];\n\n  try {\n    const parsed = JSON.parse(jsonText);\n    return [{ json: parsed }];\n  } catch (err) {\n    // Return fallback if parsing fails\n    return [{ json: { answer: \"answer not found\" } }];\n  }\n\n} else if (items[0].json.output) {\n  return [{ json: items[0].json.output }];\n} else {\n  return [{ json: { answer: \"answer not found\" } }];\n}\n\n// let rawText;\n\n// if (items[0].json.error) {\n//   rawText = items[0].json.error;\n\n//   // Match the first valid JSON object using a stricter regex\n//   const match = rawText.match(/{\\s*\"answer\"\\s*:\\s*\"[^\"]*\"\\s*}/);\n\n//   if (!match) {\n//     throw new Error(\"No valid JSON object found in the error response.\");\n//   }\n\n//   const jsonText = match[0];\n\n//   try {\n//     const parsed = JSON.parse(jsonText);\n//     return [{ json: parsed }];\n//   } catch (err) {\n//     throw new Error(\"Failed to parse extracted JSON from error: \" + err.message);\n//   }\n\n// } else if (items[0].json.output) {\n//   return [{ json: items[0].json.output }];\n// } else {\n//   throw new Error(\"Unexpected input format: neither 'error' nor 'output' found.\");\n// }\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2304,
+        304
+      ],
+      "id": "dff43d51-b715-4b47-8f67-d7830ad6636d",
+      "name": "CleanResult"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "77c07261-37f4-408b-b451-4dd0b6808cb2",
+              "name": "outputFileName_temp",
+              "value": "/data/shared/lit_review_results5_temp.csv",
+              "type": "string"
+            },
+            {
+              "id": "51797bdf-0699-4fb6-88f7-20fc424b809e",
+              "name": "outputFileName_final",
+              "value": "/data/shared/lit_review_results5_final.csv",
+              "type": "string"
+            },
+            {
+              "id": "952d22bd-67c5-48b6-8f85-ed019c010d06",
+              "name": "question_file",
+              "value": "/data/shared/lit_review_questions.txt",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -992,
+        304
+      ],
+      "id": "abd5a628-dd60-4efe-8ac1-e4af1196d148",
+      "name": "set filename"
+    },
+    {
+      "parameters": {
+        "jsCode": "const paperItem = $('split to questions').first().json;\nconst paperTitle = paperItem.paperTitle;\nconst paperTitle2 = $('query by title').first().json.title;\nconst questions = paperItem.questions;\n\nconst currentQuestion = $('set chunks').first().json.query;\nconst answer = $('CleanResult').first().json.answer;\n\n// Find the index of the current question\nconst questionIndex = questions.findIndex(q => q.question === currentQuestion);\n\nif (questionIndex === -1) {\n  throw new Error(\"Question not found in question list.\");\n}\n\n// const escape = str => `\"${String(str).replace(/\"/g, '\"\"').trim()}\"`;\n\nconst escapeCSV = str => {\n  const csvSafe = `\"${String(str).replace(/\"/g, '\"\"').trim()}\"`;\n  return csvSafe.replace(/'/g, `'\\\\''`);\n};\n// const header = [\n//   '\"Paper Title\"',\n//   ...questions.map((_, i) => `\"Question ${i + 1}\"`)\n// ].join(',');\n\nconst header = [\n  escapeCSV(paperTitle),\n  ...questions.map(q => escapeCSV(q.question))\n].join(',');\n\n// const row = [\n//   escapeCSV(paperTitle),\n//   ...questions.map(q => escapeCSV(q.question))\n// ].join(',');\n\nconst row = [\n  escapeCSV(paperTitle2),\n  ...questions.map((_, i) => i === questionIndex ? escapeCSV(answer) : '')\n].join(',');\n\n\nconst csvContent = [header, row].join('\\n') + '\\n';\nconst buffer = Buffer.from(csvContent, 'utf8');\n\nreturn [\n  {\n    binary: {\n      data: {\n        data: buffer.toString('base64'),\n        mimeType: 'text/csv',\n        fileName: 'questions_by_paper.csv'\n      }\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2976,
+        392
+      ],
+      "id": "d2547db2-5dc8-4fc0-81a5-87d758e17e3c",
+      "name": "format_for_csv"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8e331428-7600-446a-b710-68a9186131a5",
+              "leftValue": "={{ $json.mimeType }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2752,
+        296
+      ],
+      "id": "ea210e8b-901f-476c-ae63-9aafa9914b85",
+      "name": "If",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $('set filename').first().json.outputFileName_temp }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        3200,
+        400
+      ],
+      "id": "0d2c096e-5b9c-43ce-ae34-d4913d755fc5",
+      "name": "Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "command": "=printf '%s\\n' '{{ $json.csvRow }}' >> {{ $('set filename').first().json.outputFileName_temp }}\n\n\n"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        3200,
+        208
+      ],
+      "id": "50b03929-6447-429c-aff6-695cc210ca8c",
+      "name": "append to csv"
+    },
+    {
+      "parameters": {
+        "jsCode": "const paperItem = $('split to questions').first().json;\nconst paperTitle = $('query by title').first().json.title;\nconst questions = paperItem.questions;\n\n// Get the current question and its index\nconst currentQuestion = $('set chunks').first().json.query;\nconst answer = $('CleanResult').first().json.answer;\n\n// Escape function for CSV safety\n// const escape = str => `\"${String(str).replace(/\"/g, '\"\"').trim()}\"`;\n// const escape = str => `\"${String(str).replace(/\"/g, '\"\"').replace(/'/g, \"'\\\\''\").trim()}\"`;\n// const escape = str => `'${String(str).replace(/'/g, `'\\\\''`).replace(/\"/g, '\"\"').trim()}'`;\nconst escapeCSV = str => {\n  const csvSafe = `\"${String(str).replace(/\"/g, '\"\"').trim()}\"`;\n  return csvSafe.replace(/'/g, `'\\\\''`);\n};\n\n\n\n// Find the index of the current question\nconst questionIndex = questions.findIndex(q => q.question === currentQuestion);\n\nif (questionIndex === -1) {\n  throw new Error(\"Question not found in question list.\");\n}\n\n// Build the row: paper title + empty columns + answer in correct column\n// const row = [\n//   escape(paperTitle),\n//   ...questions.map((_, i) => i === questionIndex ? escape(answer) : '')\n// ].join(',');\nconst row = [\n  escapeCSV(paperTitle),\n  ...questions.map((_, i) => i === questionIndex ? escapeCSV(answer) : '')\n].join(',');\n\n// Return for Append node\nreturn [\n  {\n    json: {\n      csvRow: row,\n      // paperTitle,\n      // questions,\n      // currentQuestion,\n      // answer,\n      // questionIndex\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2976,
+        200
+      ],
+      "id": "eba87a77-7770-4dd7-a815-d84fdebbf278",
+      "name": "format_for_csv1"
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $('set filename').first().json.outputFileName_temp }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        2528,
+        304
+      ],
+      "id": "57dfaf0d-18dc-4b8d-9bd5-870ccbcb1876",
+      "name": "Read Files from Disk",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1056,
+        0
+      ],
+      "id": "d1c9d95c-176b-415d-97ff-bb34c7ce3ffc",
+      "name": "Extract from File1",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $('set filename').first().json.outputFileName_temp }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        768,
+        0
+      ],
+      "id": "afad9e29-663f-453e-995b-794c48759561",
+      "name": "read Files from Disk1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const grouped = {};\n\nfor (const item of items) {\n  const title = item.json[\"Paper Title\"];\n  if (!grouped[title]) {\n    grouped[title] = { ...item.json };\n  } else {\n    for (const key in item.json) {\n      if (key !== \"Paper Title\") {\n        const existing = grouped[title][key] || \"\";\n        const newValue = item.json[key] || \"\";\n        if (!existing.includes(newValue)) {\n          grouped[title][key] = [existing, newValue].filter(Boolean).join(\" \");\n        }\n      }\n    }\n  }\n}\n\nreturn Object.values(grouped).map(data => ({ json: data }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        0
+      ],
+      "id": "75ae3a76-09b6-48ac-a99b-be71c015a8f6",
+      "name": "merge csv by title"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $('set filename').first().json.outputFileName_final }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1728,
+        0
+      ],
+      "id": "60b813eb-3231-4d15-ba6e-8709b35a0a9f",
+      "name": "Write Files from Disk1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// const grouped = {};\n\n// // Step 1: Group and merge rows by \"Paper Title\"\n// for (const item of items) {\n//   const title = item.json[\"Paper Title\"];\n//   if (!grouped[title]) {\n//     grouped[title] = { ...item.json };\n//   } else {\n//     for (const key in item.json) {\n//       if (key !== \"Paper Title\") {\n//         const existing = grouped[title][key] || \"\";\n//         const newValue = item.json[key] || \"\";\n//         if (!existing.includes(newValue)) {\n//           grouped[title][key] = [existing, newValue].filter(Boolean).join(\" \");\n//         }\n//       }\n//     }\n//   }\n// }\n\n// // Step 2: Convert merged JSON to CSV string\n// const merged = Object.values(grouped);\n// const headers = Object.keys(merged[0]);\n// const csvRows = [headers.join(\",\")];\n\n// for (const row of merged) {\n//   const values = headers.map(h => `\"${(row[h] || \"\").replace(/\"/g, '\"\"')}\"`);\n//   csvRows.push(values.join(\",\"));\n// }\n\n// const csvString = csvRows.join(\"\\n\");\n\n// // Step 3: Return as binary data for writing to file\n// return [\n//   {\n//     binary: {\n//       data: Buffer.from(csvString, 'utf8'),\n//     },\n//     json: {\n//       outputFileName: \"merged_output.csv\",\n//       mimeType: \"text/csv\"\n//     }\n//   }\n// ];\nconst grouped = {};\n\n// Step 1: Group and merge rows by \"Paper Title\"\nfor (const item of items) {\n  const title = item.json[\"Paper Title\"];\n  if (!grouped[title]) {\n    grouped[title] = { ...item.json };\n  } else {\n    for (const key in item.json) {\n      if (key !== \"Paper Title\") {\n        const existing = grouped[title][key] || \"\";\n        const newValue = item.json[key] || \"\";\n        if (!existing.includes(newValue)) {\n          grouped[title][key] = [existing, newValue].filter(Boolean).join(\" \");\n        }\n      }\n    }\n  }\n}\n\n// Step 2: Convert merged JSON to CSV string\nconst merged = Object.values(grouped);\nconst headers = Object.keys(merged[0]);\nconst csvRows = [headers.join(\",\")];\n\nfor (const row of merged) {\n  const values = headers.map(h => `\"${(row[h] || \"\").replace(/\"/g, '\"\"')}\"`);\n  csvRows.push(values.join(\",\"));\n}\n\nconst csvString = csvRows.join(\"\\n\");\n\n// Step 3: Return as binary data with correct structure\nreturn [\n  {\n    binary: {\n      data: {\n        data: Buffer.from(csvString, 'utf8').toString('base64'),\n        mimeType: 'text/csv',\n        fileName: 'merged_output.csv'\n      }\n    },\n    json: {\n      outputFileName_final: \"merged_output.csv\"\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        0
+      ],
+      "id": "17c2951a-4f5b-4dd5-a14f-67dbf2b12871",
+      "name": "format_for_csv2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "set filename",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get title list": {
+      "main": [
+        [
+          {
+            "node": "combine title and questions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "query by title": {
+      "main": [
+        [
+          {
+            "node": "set chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "read Files from Disk1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "query by title",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Me": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Ollama2": {
+      "ai_embedding": [
+        [
+          {
+            "node": "get title list",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sparse Vector": {
+      "ai_tool": [
+        [
+          {
+            "node": "get title list",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set chunks": {
+      "main": [
+        [
+          {
+            "node": "Clean chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean chunks": {
+      "main": [
+        [
+          {
+            "node": "rerank results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "rerank results": {
+      "main": [
+        [
+          {
+            "node": "format for rag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer the query based on chunks": {
+      "main": [
+        [
+          {
+            "node": "CleanResult",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Answer the query based on chunks",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format for rag": {
+      "main": [
+        [
+          {
+            "node": "Answer the query based on chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Files from Disk1": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "split to questions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "split to questions": {
+      "main": [
+        [
+          {
+            "node": "get title list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "combine title and questions": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Ollama": {
+      "ai_embedding": [
+        [
+          {
+            "node": "query by title",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sparse Vector1": {
+      "ai_tool": [
+        [
+          {
+            "node": "query by title",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set filename": {
+      "main": [
+        [
+          {
+            "node": "Read Files from Disk1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format_for_csv": {
+      "main": [
+        [
+          {
+            "node": "Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "format_for_csv1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "format_for_csv",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format_for_csv1": {
+      "main": [
+        [
+          {
+            "node": "append to csv",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CleanResult": {
+      "main": [
+        [
+          {
+            "node": "Read Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Replace Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "append to csv": {
+      "main": [
+        [
+          {
+            "node": "Replace Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File1": {
+      "main": [
+        [
+          {
+            "node": "merge csv by title",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "read Files from Disk1": {
+      "main": [
+        [
+          {
+            "node": "Extract from File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "merge csv by title": {
+      "main": [
+        [
+          {
+            "node": "format_for_csv2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format_for_csv2": {
+      "main": [
+        [
+          {
+            "node": "Write Files from Disk1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "89389c05-b674-48aa-bf51-b33fbaf27731",
+  "meta": {
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "clz7LVuGnvOP6JLt",
+  "tags": []
+}

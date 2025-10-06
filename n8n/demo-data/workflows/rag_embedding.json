@@ -29,7 +29,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const chunks = [];\nconst chunkSize = 1000;\nconst chunkOverlap = 200;\nconst text = $('Extract from File').item.json.text.replace(/\\n/, '');\n\nfor (let i=0,j=Math.round(text.length/chunkSize)+1;i<j;i++) {\n  chunks.push(\n    text.substr(\n      Math.max(0,(i * chunkSize)-chunkOverlap),\n      chunkSize\n    )\n  );\n}\n\nreturn { chunks };"
+        "jsCode": "\nconst chunks = [];\nconst chunkSize = 1000;\nconst chunkOverlap = 200;\n// const text = $('Extract from File').item.json.text.replace(/\\n/, '');\n\n\n// Get and sanitize the text\nlet text = $('Extract from File').item.json.text || '';\n\n// Remove newline characters and invalid Unicode (surrogate pairs)\ntext = text.replace(/\\n/g, ' ').replace(/[\\uD800-\\uDFFF]/g, '');\n\n\n\nfor (let i=0,j=Math.round(text.length/chunkSize)+1;i<j;i++) {\n  chunks.push(\n    text.substr(\n      Math.max(0,(i * chunkSize)-chunkOverlap),\n      chunkSize\n    )\n  );\n}\nreturn { chunks };\n\n// // Generate chunks\n// for (let i = 0, j = Math.ceil(text.length / chunkSize); i < j; i++) {\n//   const start = Math.max(0, (i * chunkSize) - chunkOverlap);\n//   const chunk = text.substr(start, chunkSize);\n\n//   chunks.push({ json: { chunk } });\n// }\n\n// return {chunks};\n"
       },
       "id": "521c9931-8d5b-42dc-b696-dd589d84b832",
       "name": "Create Chunks From Doc",
@@ -414,7 +414,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "1fec53a4-429e-4ee8-90fa-a72c8ec4d666",
+  "versionId": "8b7d15a1-c934-4f7a-a9d2-66cc43b69d36",
   "meta": {
     "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
   },
